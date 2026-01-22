@@ -4,5 +4,13 @@ __pycache__
 *.pyc
 models/*
 datasets/*sense
-datasets/v1.1
+datasets/*v1.1
 datasets/ABD
+datasets/*.tar.gz
+datasets/WorldFloodsv2
+output/
+*.csv
+*.pth
+*.pt
+prithvi
+cache

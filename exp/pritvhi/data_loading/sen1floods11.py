@@ -80,9 +80,24 @@ def processTestIm(img, bands):
 def getArrFlood(fname):
   return rasterio.open(fname).read()
 
-LABEL_DIR = 'LabelHand'
-IMAGE_DIR = 'S2Hand'
+LABEL_DIR = 'data/LabelHand'
+IMAGE_DIR = 'data/S2L1CHand'
 DATASET_DIR = 'splits'
+
+def load_flood_data(path, dataset_type):
+    fpath = os.path.join(path, DATASET_DIR, f'flood_{dataset_type}_data.txt')
+    with open(fpath) as f:
+        get_img_path = lambda identifier: os.path.join(path, IMAGE_DIR, f"{identifier}_S2Hand.tif")
+        get_label_path = lambda identifier: os.path.join(path, LABEL_DIR, f"{identifier}_LabelHand.tif")
+        
+        # Read single column of identifiers
+        data_files = []
+        for line in f:
+            identifier = line.strip()
+            if identifier:  # Skip empty lines
+                data_files.append((get_img_path(identifier), get_label_path(identifier)))
+    
+    return download_flood_water_data_from_list(data_files)
 
 def download_flood_water_data_from_list(l):
   flood_data = []
@@ -96,13 +111,13 @@ def download_flood_water_data_from_list(l):
     flood_data.append((arr_x,arr_y))
   return flood_data
 
-def load_flood_data(path, dataset_type):
-    fpath = os.path.join(path, DATASET_DIR, f'flood_{dataset_type}_data.csv')
-    with open(fpath) as f:
-        get_img_path = lambda filename: os.path.join(path, IMAGE_DIR, filename)
-        get_label_path = lambda filename: os.path.join(path, LABEL_DIR, filename)
-        data_files = [(get_img_path(img_filename), get_label_path(mask_filename)) for img_filename, mask_filename in csv.reader(f)]
-    return download_flood_water_data_from_list(data_files)
+# def load_flood_data(path, dataset_type):
+#     fpath = os.path.join(path, DATASET_DIR, f'flood_{dataset_type}_data.txt')
+#     with open(fpath) as f:
+#         get_img_path = lambda filename: os.path.join(path, IMAGE_DIR, filename)
+#         get_label_path = lambda filename: os.path.join(path, LABEL_DIR, filename)
+#         data_files = [(get_img_path(img_filename), get_label_path(mask_filename)) for img_filename, mask_filename in csv.reader(f)]
+#     return download_flood_water_data_from_list(data_files)
 
 def get_train_loader(data_path, args):
     train_data = load_flood_data(data_path, 'train')

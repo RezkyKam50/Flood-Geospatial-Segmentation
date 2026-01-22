@@ -1,0 +1,68 @@
+[
+    {
+        "model_name": "unet",
+        "num_parameters": 37646174,
+        "test_metrics": {
+            "IOU_floods": 0.7780390876026106,
+            "IOU_non_floods": 0.9632207576342289,
+            "Avg_IOU": 0.8706299226184198,
+            "ACC_floods": 0.920217631826922,
+            "ACC_non_floods": 0.9741088438861645,
+            "Avg_ACC": 0.9471632378565432,
+            "Loss": 0.1375937611485521
+        },
+        "bolivia_metrics": {
+            "IOU_floods": 0.6790365530831953,
+            "IOU_non_floods": 0.9133482709369807,
+            "Avg_IOU": 0.7961924120100881,
+            "ACC_floods": 0.9560422216191968,
+            "ACC_non_floods": 0.9211122802226488,
+            "Avg_ACC": 0.9385772509209228,
+            "Loss": 0.20167383104562758
+        }
+    },
+    {
+        "model_name": "prithvi",
+        "num_parameters": 13377426,
+        "test_metrics": {
+            "IOU_floods": 0.6998188781494814,
+            "IOU_non_floods": 0.9484154531664367,
+            "Avg_IOU": 0.8241171656579591,
+            "ACC_floods": 0.8650273950891162,
+            "ACC_non_floods": 0.9665523527026847,
+            "Avg_ACC": 0.9157898738959005,
+            "Loss": 0.42149818191925686
+        },
+        "bolivia_metrics": {
+            "IOU_floods": 0.6885197398968139,
+            "IOU_non_floods": 0.9244805847610271,
+            "Avg_IOU": 0.8065001623289205,
+            "ACC_floods": 0.8828023326004729,
+            "ACC_non_floods": 0.945432834542159,
+            "Avg_ACC": 0.914117583571316,
+            "Loss": 0.41621899604797363
+        }
+    },
+    {
+        "model_name": "prithvi_unet",
+        "num_parameters": 125066590,
+        "test_metrics": {
+            "IOU_floods": 0.7890755242930709,
+            "IOU_non_floods": 0.9654760456086948,
+            "Avg_IOU": 0.8772757849508829,
+            "ACC_floods": 0.9216909683097605,
+            "ACC_non_floods": 0.9761880848000456,
+            "Avg_ACC": 0.948939526554903,
+            "Loss": 0.13977738643685977
+        },
+        "bolivia_metrics": {
+            "IOU_floods": 0.7328289408853511,
+            "IOU_non_floods": 0.9355836594056939,
+            "Avg_IOU": 0.8342063001455224,
+            "ACC_floods": 0.9266438132368985,
+            "ACC_non_floods": 0.9488555647478065,
+            "Avg_ACC": 0.9377496889923524,
+            "Loss": 0.19312629699707032
+        }
+    }
+]

@@ -4,7 +4,7 @@ import numpy as np
 import torch
 
 import terratorch
-from terratorch.datamodules import Landslide4SenseNonGeoDataModule
+from terratorch.datamodules import Landslide4SenseNonGeoDataModule, GenericNonGeoSegmentationDataModule
 from terratorch.datasets import Landslide4SenseNonGeo
 from terratorch.tasks import SemanticSegmentationTask
 
@@ -14,15 +14,21 @@ import lightning.pytorch as pl
 from lightning.pytorch.loggers import TensorBoardLogger
 from lightning.pytorch.callbacks import ModelCheckpoint
 
-DATASET_PATH = "./datasets"
+DATASET_PATH = "./data"
 OUT_DIR = "./landslide_example"  # where to save checkpoints and log files
+
+
+from huggingface_hub import snapshot_download
+
+repo_id = "ibm-nasa-geospatial/Landslide4sense"
+_ = snapshot_download(repo_id=repo_id, repo_type="dataset", cache_dir="./cache", local_dir=DATASET_PATH)
 
 BATCH_SIZE = 16
 EPOCHS = 40
 LR = 1.0e-4
 WEIGHT_DECAY = 0.1
 HEAD_DROPOUT=0.1
-FREEZE_BACKBONE = False
+FREEZE_BACKBONE = True
 BANDS = ["BLUE", "GREEN", "RED", "NIR_BROAD", "SWIR_1", "SWIR_2"]
 NUM_WORKERS = 7   # adjust value based on your system
 SEED = 0
@@ -121,7 +127,7 @@ def train():
     backbone_args = dict(
         backbone_pretrained=True,
         backbone="prithvi_eo_v2_300", # prithvi_eo_v2_300, prithvi_eo_v2_300_tl, prithvi_eo_v2_600, prithvi_eo_v2_600_tl
-        backbone_bands=BANDS,
+        backbone_bands=,
         backbone_num_frames=1,
     )
 
