@@ -15,3 +15,5 @@ output/
 prithvi
 cache
 events.out.tfevents.*
+*.zip
+*.png

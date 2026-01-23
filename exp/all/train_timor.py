@@ -19,6 +19,7 @@ matplotlib.use('Agg')  # Use non-interactive backend
 import matplotlib.pyplot as plt
 import numpy as np
 import json
+import gc
 
 torch.manual_seed(124)
 
@@ -174,6 +175,10 @@ def test(model, loader, criterion, device, viz_dir=None, num_viz=5):
                 visualized = True
             
             index += 1
+            
+            # Clear cache periodically to prevent memory buildup
+            if index % 10 == 0:
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
     TP, FP, TN, FN, loss = metricss['TP'].item(), metricss['FP'].item(), metricss['TN'].item(), metricss['FN'].item(), metricss['loss']
     
@@ -219,13 +224,13 @@ def train_single_model(model_name, model, train_loader, valid_loader, test_loade
     
     # Setup optimizer and scheduler
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-    # criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.3,0.7]).float().to(device), ignore_index=255)
-    criterion = DiceLoss2(device=device)
+    criterion = nn.CrossEntropyLoss(weight=torch.tensor([0.3,0.7]).float().to(device), ignore_index=255)
+    # criterion = DiceLoss(device=device)
     scheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, args.epochs)
     
     # Freeze Prithvi if applicable
     if model_name in ['prithvi', 'prithvi_unet']:
-        model.change_prithvi_trainability(True)
+        model.change_prithvi_trainability(False)
         logger.info(f"Prithvi weights frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
     
     # Training loop
@@ -292,6 +297,12 @@ def train_single_model(model_name, model, train_loader, valid_loader, test_loade
     # Final evaluation
     logger.info(f"\n{model_name} - Final Evaluation")
     test_metrics = test(model, test_loader, criterion, device)
+    
+    # Clear memory before Timor-Leste evaluation
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    gc.collect()
+    
+    logger.info(f"Evaluating on Timor-Leste dataset...")
     timor_leste_metrics = test(model, timor_leste_loader, criterion, device)
     
     logger.info(f"Test Set - Avg IOU: {test_metrics['Avg_IOU']:.4f}, Avg ACC: {test_metrics['Avg_ACC']:.4f}, Loss: {test_metrics['Loss']:.4f}")
@@ -366,8 +377,9 @@ def main(args):
         )
         results.append(result)
         
-        # Clear memory
+        # Clear memory thoroughly
         del model
+        gc.collect()
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
     # Print comparison summary

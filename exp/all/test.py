@@ -17,11 +17,14 @@ def parse_arguments():
                         help='Path to the data directory.')
     parser.add_argument('--models_dir', type=str, required=True,
                         help='Directory containing trained models (e.g., ./logs/comparison_xxx)')
-    parser.add_argument('--batch_size', type=int, default=4, help='Batch size.')
+    parser.add_argument('--batch_size', type=int, default=8, 
+                        help='Batch size for inference (reduce if OOM)')
     parser.add_argument('--output_path', type=str, default='./comparison_timor_leste.png',
                         help='Path to save the comparison figure')
     parser.add_argument('--max_samples', type=int, default=None,
                         help='Maximum number of patches to visualize (default: all)')
+    parser.add_argument('--samples_per_event', type=int, default=3,
+                        help='Number of patches to sample from each event')
     
     # Model parameters (should match training)
     parser.add_argument('--prithvi_out_channels', type=int, default=768)
@@ -33,7 +36,6 @@ def parse_arguments():
 
 def load_model(model_name, args, device):
     """Load a trained model"""
-    # Initialize model
     args.num_classes = 2
     args.in_channels = 6
     
@@ -73,8 +75,11 @@ def load_model(model_name, args, device):
     
     return model
 
-def load_timor_leste_all_patches():
-    """Load ALL 224x224 patches from all 5 Timor-Leste events"""
+def load_timor_leste_sampled_patches(samples_per_event=3):
+    """
+    Load a subset of patches from each Timor-Leste event.
+    This avoids loading all patches into memory at once.
+    """
     all_samples = []
     
     for event_id, satellite in timor_leste_events.items():
@@ -88,57 +93,96 @@ def load_timor_leste_all_patches():
         arr_x = np.nan_to_num(getArrFlood(img_path))
         arr_y = getArrFlood(label_path)
         
-        # Convert ml4floods labels to binary (same as in ml4floods.py)
+        # Convert ml4floods labels to binary
         arr_y_new = np.zeros_like(arr_y)
         arr_y_new[arr_y == 0] = 255  # invalid -> ignore
         arr_y_new[arr_y == 1] = 0    # land -> land
         arr_y_new[arr_y == 2] = 1    # water -> water
         arr_y_new[arr_y == 3] = 1    # permanent water -> water
         
-        # Use processTimorLesteData to extract all patches
-        imgs, labels = processTimorLesteData((arr_x, arr_y_new))
+        # Get all patches for this event
+        patches = processTimorLesteData((arr_x, arr_y_new))
         
-        # Create a sample for each patch
-        for i in range(len(imgs)):
+        # Sample evenly spaced patches
+        total_patches = len(patches)
+        if samples_per_event >= total_patches:
+            selected_indices = range(total_patches)
+        else:
+            # Evenly space samples across all patches
+            step = total_patches / samples_per_event
+            selected_indices = [int(i * step) for i in range(samples_per_event)]
+        
+        # Create samples for selected patches
+        for idx in selected_indices:
+            img, label = patches[idx]
             all_samples.append({
-                'image': imgs[i],
-                'label': labels[i],
+                'image': img,
+                'label': label,
                 'event_id': event_id,
                 'satellite': satellite,
-                'patch_idx': i
+                'patch_idx': idx,
+                'total_patches': total_patches
             })
     
     return all_samples
 
-def create_comparison_figure(models, samples, device, save_path='comparison.png'):
+def get_predictions_batch(models, images, device, batch_size=8):
     """
-    Create a comparison figure showing RGB, Ground Truth, and predictions from all models
+    Get predictions from all models in batches to avoid OOM.
     
     Args:
         models: Dictionary of {model_name: model}
-        samples: List of sample dictionaries
+        images: Tensor of images [N, C, H, W]
         device: torch device
-        save_path: Path to save the figure
+        batch_size: Batch size for inference
+    
+    Returns:
+        Dictionary of {model_name: predictions_array}
+    """
+    num_samples = images.shape[0]
+    predictions = {name: [] for name in models.keys()}
+    
+    # Process in batches
+    for i in range(0, num_samples, batch_size):
+        batch_end = min(i + batch_size, num_samples)
+        batch_imgs = images[i:batch_end].to(device)
+        
+        with torch.no_grad():
+            for model_name, model in models.items():
+                outputs = model(batch_imgs)
+                pred = torch.argmax(outputs, dim=1)
+                predictions[model_name].append(pred.cpu())
+        
+        # Clear GPU memory after each batch
+        del batch_imgs
+        torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    
+    # Concatenate all batch predictions
+    for model_name in predictions:
+        predictions[model_name] = torch.cat(predictions[model_name], dim=0).numpy()
+    
+    return predictions
+
+def create_comparison_figure(models, samples, device, save_path='comparison.png', batch_size=8):
+    """
+    Create a comparison figure showing RGB, Ground Truth, and predictions from all models
     """
     num_samples = len(samples)
     
-    # Prepare batch for inference
-    imgs = torch.stack([s['image'] for s in samples]).to(device)
+    # Prepare all images (keep on CPU initially)
+    imgs = torch.stack([s['image'] for s in samples])
+    masks = torch.stack([s['label'] for s in samples])
     
-    # Get predictions from all models
-    predictions = {}
-    with torch.no_grad():
-        for model_name, model in models.items():
-            outputs = model(imgs)
-            pred = torch.argmax(outputs, dim=1)
-            predictions[model_name] = pred.cpu().numpy()
+    # Get predictions in batches
+    print(f"  Running inference in batches of {batch_size}...")
+    predictions = get_predictions_batch(models, imgs, device, batch_size)
     
     # Convert to numpy
-    imgs_np = imgs.cpu().numpy()
-    masks_np = torch.stack([s['label'] for s in samples]).cpu().numpy()
+    imgs_np = imgs.numpy()
+    masks_np = masks.numpy()
     
-    # Create figure: columns = RGB + Ground Truth + 3 models
-    num_cols = 2 + len(models)  # RGB, GT, and one column per model
+    # Create figure
+    num_cols = 2 + len(models)
     fig, axes = plt.subplots(num_samples, num_cols, figsize=(4*num_cols, 4*num_samples))
     
     if num_samples == 1:
@@ -159,7 +203,6 @@ def create_comparison_figure(models, samples, device, save_path='comparison.png'
         col += 1
         
         # Column 1: Ground Truth
-        # Mask out invalid pixels (255) for visualization
         gt_vis = np.ma.masked_where(masks_np[i] == 255, masks_np[i])
         axes[i, col].imshow(gt_vis, cmap='Blues', vmin=0, vmax=1)
         if i == 0:
@@ -178,10 +221,11 @@ def create_comparison_figure(models, samples, device, save_path='comparison.png'
             axes[i, col].axis('off')
             col += 1
         
-        # Add sample label on the left with event ID and patch index
+        # Add sample label
         event_id = samples[i]['event_id']
         patch_idx = samples[i]['patch_idx']
-        axes[i, 0].text(-0.1, 0.5, f'{event_id}\nPatch {patch_idx}', 
+        total_patches = samples[i]['total_patches']
+        axes[i, 0].text(-0.1, 0.5, f'{event_id}\nPatch {patch_idx}/{total_patches}', 
                        transform=axes[i, 0].transAxes,
                        fontsize=9, fontweight='bold',
                        verticalalignment='center',
@@ -201,9 +245,9 @@ def main(args):
     device = torch.device('mps') if torch.backends.mps.is_available() else device
     print(f'Using device: {device}')
     
-    # Load ALL Timor-Leste patches
-    print("Loading all Timor-Leste patches...")
-    samples = load_timor_leste_all_patches()
+    # Load sampled Timor-Leste patches
+    print(f"Loading {args.samples_per_event} patches per event from Timor-Leste...")
+    samples = load_timor_leste_sampled_patches(samples_per_event=args.samples_per_event)
     print(f"Loaded {len(samples)} total patches from 5 events:")
     
     # Count patches per event
@@ -211,9 +255,10 @@ def main(args):
     event_counts = Counter([s['event_id'] for s in samples])
     for event_id, count in event_counts.items():
         satellite = samples[[s['event_id'] for s in samples].index(event_id)]['satellite']
-        print(f"  - {event_id} ({satellite}): {count} patches")
+        total = samples[[s['event_id'] for s in samples].index(event_id)]['total_patches']
+        print(f"  - {event_id} ({satellite}): {count}/{total} patches")
     
-    # Optionally limit number of samples for visualization
+    # Optionally limit total number of samples
     if args.max_samples and len(samples) > args.max_samples:
         print(f"\nLimiting to {args.max_samples} samples for visualization...")
         samples = samples[:args.max_samples]
@@ -240,7 +285,8 @@ def main(args):
         models, 
         samples,
         device, 
-        save_path=args.output_path
+        save_path=args.output_path,
+        batch_size=args.batch_size
     )
     
     print("Done!")
