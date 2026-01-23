@@ -14,3 +14,4 @@ output/
 *.pt
 prithvi
 cache
+events.out.tfevents.*

@@ -1,0 +1,33 @@
+'''
+Pleiades-1A-1B:
+Panchromatic: 480-830 nm
+Blue: 430-550 nm
+Green: 490-610 nm
+Red: 600-720 nm
+NIR: 750-950 nm
+
+PlanetScope:
+Coastal Blue: 431 - 452 nm
+Blue: 465 – 515 nm
+Green I: 513 - 549 nm
+Green: 547 – 583 nm
+Yellow: 600 - 620 nm
+Red: 650 – 680 nm
+RedEdge: 697 – 713 nm
+NIR: 845 – 885 nm
+
+Sentinel-2:
+Coastal Aerosol: 433 - 453 nm
+Blue: 458 - 523 nm
+Green: 543 - 578 nm
+Red: 650 - 680 nm
+Vegetation Red Edge 1: 698 - 713 nm
+Vegetation Red Edge 2: 733 - 748 nm
+Vegetation Red Edge 3: 773 - 793 nm
+NIR: 785 - 900 nm
+Narrow NIR: 855 - 875 nm
+Water Vapour: 935 - 955 nm
+Cirrus: 1360 - 1390 nm
+SWIR 1: 1565 - 1655 nm
+SWIR 2: 2100 - 2280 nm
+'''
