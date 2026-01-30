@@ -17,5 +17,11 @@ cache
 events.out.tfevents.*
 *.zip
 logs/
+*.tif
+Timor_Processed
 plots
 visualizations
+Timor_ML4Floods
+Timor_ML4FLoods
+Bolivia_Quant
+outputs

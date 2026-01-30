@@ -15,8 +15,8 @@ TIMOR_LESTE_EVENTS = {
     "EMSR507_AOI07_GRA_PRODUCT": "PlanetScope"
 }
 
-        # 'names': ['Coastal Blue', 'Blue', 'Green I', 'Green', 
-        #          'Yellow', 'Red', 'RedEdge', 'NIR']
+# 'names': ['Coastal Blue', 'Blue', 'Green I', 'Green', 
+#          'Yellow', 'Red', 'RedEdge', 'NIR']
 
 # RGB band indices for each satellite (Red, Green, Blue order)
 SATELLITE_RGB_BANDS = {

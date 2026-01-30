@@ -27,25 +27,26 @@ class InMemoryDataset(torch.utils.data.Dataset):
   def __len__(self):
     return len(self.data_list)
 
-# for S2 bands
+
+# Specific for timor leste only, however, in "processTimorLesteData" its still using USED_BANDS from sen1floods11, but we want it using these bands below
 SATELLITE_ALL_BANDS_MAPPING = {
     'Sentinel-2': {
-        'bands': list(range(1, 14)),  # All 13 bands (1-13)
+        'bands': [1, 2, 3, 8, 11, 12],  
         'names': ['Coastal Aerosol', 'Blue', 'Green', 'Red', 
                  'Red Edge 1', 'Red Edge 2', 'Red Edge 3', 'NIR', 
                  'Narrow NIR', 'Water Vapour', 'Cirrus', 'SWIR1', 'SWIR2']
     },
     'Pleiades-1A-1B': {
-        'bands': list(range(1, 6)),  # All 5 bands (1-5): Pan, Blue, Green, Red, NIR
+        'bands': [4, 3, 2],   
         'names': ['Panchromatic', 'Blue', 'Green', 'Red', 'NIR']
     },
     'PlanetScope': {
-        'bands': list(range(1, 9)),  # All 8 bands (1-8)
+        'bands': [5, 4, 2], 
         'names': ['Coastal Blue', 'Blue', 'Green I', 'Green', 
                  'Yellow', 'Red', 'RedEdge', 'NIR']
     }
 }
- 
+
 INPUT_SIZE = 224
 PATCH_SIZE = 224  # New patch size for cutting images
 MEANS = [0.13692222, 0.13376727, 0.11943894, 0.30450596, 0.20170933, 0.11685023]
@@ -54,7 +55,7 @@ STDS = [0.03381057, 0.03535441, 0.04496607, 0.07556641, 0.06130259, 0.04689224]
 # this is for testing, using ml4floods
 root = 'datasets/WorldFloodsv2'
 metadata_path = f'{root}/dataset_metadata.csv'
-test_path_label = f'{root}/train/PERMANENTWATERJRC/'    # PermanentWater
+test_path_label = f'{root}/train/gt/'    # PermanentWater
 test_path_geojson = f'{root}/train/floodmaps/'          # comparable to 'GeoJSONHand' in sen1floods11 <- this should be rasterized into permanentwaterjrc
 test_path_s2 = f'{root}/train/S2/'                      # comparable to 'S2L1CHand' in sen1floods11
 # Unique class values: [0 1 2 3]
@@ -75,14 +76,14 @@ timor_leste_events = {
     "EMSR507_AOI07_GRA_PRODUCT": "PlanetScope"
 }
 
-test_files_label = [(f"{test_path_label}{event_id}{extension}", satellite) 
-         for event_id, satellite in timor_leste_events.items()]
+# test_files_label = [(f"{test_path_label}{event_id}{extension}", satellite) 
+#          for event_id, satellite in timor_leste_events.items()]
 
-test_files_s2 = [(f"{test_path_s2}{event_id}{extension}", satellite) 
-         for event_id, satellite in timor_leste_events.items()]
+# test_files_s2 = [(f"{test_path_s2}{event_id}{extension}", satellite) 
+#          for event_id, satellite in timor_leste_events.items()]
 
-test_files_geojson = [(f"{test_path_geojson}{event_id}{geo_extension}", satellite) 
-         for event_id, satellite in timor_leste_events.items()]
+# test_files_geojson = [(f"{test_path_geojson}{event_id}{geo_extension}", satellite) 
+#          for event_id, satellite in timor_leste_events.items()]
 
 # this is for training, using sen1floods11. It contains 'bolivia' for testing but we'll use 'timor-leste' from ml4floods for testing
 LABEL_DIR = 'data/LabelHand'
@@ -219,7 +220,12 @@ def load_timor_leste_data():
         data_files.append((img_path, label_path))
     
     return download_flood_water_data_from_list(data_files)
- 
+
+    # cloud_mask = (label == 0).astype(np.uint8)
+    # land_mask = (label == 1).astype(np.uint8)
+    # flood_mask = (label == 2).astype(np.uint8)
+    # permanent_water_mask = (label == 3).astype(np.uint8)
+
 def download_flood_water_data_from_list(l):
   flood_data = []
   for (im_path, mask_path) in l:
@@ -240,10 +246,10 @@ def download_flood_water_data_from_list(l):
       # 2 (water) -> 1 (water)
       # 3 (permanent water) -> 1 (water)
       arr_y_new = np.zeros_like(arr_y)
-      arr_y_new[arr_y == 0] = 255  # invalid -> ignore
-      arr_y_new[arr_y == 1] = 0    # land -> land
-      arr_y_new[arr_y == 2] = 1    # water -> water
-      arr_y_new[arr_y == 3] = 1    # permanent water -> water # sesuaikan dengan sen1floods11 karena include permanent water as water
+      arr_y_new[arr_y == 0] = 255  # invalid -> ignore  
+      arr_y_new[arr_y == 1] = 1    # flood -> flood
+      arr_y_new[arr_y == 2] = 255    # cloud -> ignore
+        #   arr_y_new[arr_y == 3] = 1    # permanent water -> water # sesuaikan dengan sen1floods11 karena include permanent water as water
       arr_y = arr_y_new
     else:
       # sen1floods11 label conversion:
@@ -254,7 +260,6 @@ def download_flood_water_data_from_list(l):
   return flood_data
 
 def load_timor_leste_data_with_flood_masks():
-    """Load Timor-Leste data prioritizing flood mask as ground truth"""
     data_files = []
     
     for event_id, satellite in timor_leste_events.items():
@@ -267,8 +272,7 @@ def load_timor_leste_data_with_flood_masks():
         
         arr_x = np.nan_to_num(getArrFlood(img_path))
         arr_y = getArrFlood(label_path)
-        
-        # SQUEEZE to remove channel dimension if it exists
+         
         if arr_y.ndim == 3:
             arr_y = arr_y.squeeze()  # (1, H, W) -> (H, W)
         
@@ -305,7 +309,7 @@ def load_timor_leste_data_with_flood_masks():
             arr_y_new[arr_y == 0] = 255  # invalid
             arr_y_new[arr_y == 1] = 0    # land
             arr_y_new[arr_y == 2] = 1    # flood water
-            arr_y_new[arr_y == 3] = 1    # permanent water  
+            arr_y_new[arr_y == 3] = 1    # permanent water  <- to match sen1floods 
             arr_y = arr_y_new
         
         data_files.append((arr_x, arr_y))
@@ -354,7 +358,6 @@ def get_test_loader(data_path, type):
     return valid_loader
 
 def get_timor_leste_loader(use_flood_masks=False):
-    """Get data loader for Timor-Leste test set using 224x224 patches"""
     if use_flood_masks:
         timor_leste_data = load_timor_leste_data_with_flood_masks()
     else:
@@ -371,52 +374,6 @@ def get_timor_leste_loader(use_flood_masks=False):
         drop_last=False
     )
     return timor_leste_loader
-
-def print_dataset_class_info(data_path):
-    """Print class information for sen1floods11 and timor-leste datasets"""
-    
-    print("=" * 60)
-    print("DATASET CLASS INFORMATION")
-    print("=" * 60)
-    
-    # Check sen1floods11 datasets
-    for dataset_type in ['train', 'valid', 'test']:
-        try:
-            data = load_flood_data(data_path, dataset_type)
-            all_labels = []
-            for _, label in data:
-                all_labels.append(label)
-            
-            all_labels = np.concatenate([l.flatten() for l in all_labels])
-            unique_classes = np.unique(all_labels)
-            
-            print(f"\nsen1floods11 - {dataset_type.upper()}:")
-            print(f"  Unique class values: {unique_classes}")
-            print(f"  Number of classes: {len(unique_classes)}")
-            
-        except Exception as e:
-            print(f"\nsen1floods11 - {dataset_type.upper()}: Error - {e}")
-    
-    # Check timor-leste dataset
-    try:
-        timor_data = load_timor_leste_data()
-        all_labels = []
-        for _, label in timor_data:
-            all_labels.append(label)
-        
-        all_labels = np.concatenate([l.flatten() for l in all_labels])
-        unique_classes = np.unique(all_labels)
-        
-        print(f"\nTimor-Leste:")
-        print(f"  Unique class values: {unique_classes}")
-        print(f"  Number of classes: {len(unique_classes)}")
-        
-    except Exception as e:
-        print(f"\nTimor-Leste: Error - {e}")
-    
-    print("\n" + "=" * 60)
-
-
 
 def get_loader(data_path, type, args):
     if type == 'timor_leste':

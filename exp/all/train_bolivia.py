@@ -50,11 +50,15 @@ def parse_arguments():
     parser.add_argument('--test_interval', type=int, default=1, help='Test the model every n epochs')
     parser.add_argument('--combine_func', type=str, default='concat', choices=['concat', 'mul', 'add'], help='Combination function for U-Prithvi')
     parser.add_argument('--random_dropout_prob', type=float, default=2/3, help='Dropout probability for U-Prithvi')
+
     
     return parser.parse_args()
 
 def get_number_of_trainable_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def get_total_parameters(model):
+    return sum(p.numel() for p in model.parameters())
 
 def train_model(model, loader, optimizer, criterion, epoch, device):
     model.train()
@@ -134,11 +138,14 @@ def train_single_model(model_name, model, train_loader, valid_loader, test_loade
     os.makedirs(model_log_dir, exist_ok=True)
     model_dir = os.path.join(model_log_dir, 'models')
     os.makedirs(model_dir, exist_ok=True)
+
+    num_params_phase_1 = "N/A"
+    num_params_phase_2 = "N/A"
     
     writer = SummaryWriter(model_log_dir)
     
     num_params = get_number_of_trainable_parameters(model)
-    logger.info(f"Number of trainable parameters: {num_params:,}")
+    num_params_total = get_total_parameters(model)
     
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
 
@@ -157,9 +164,10 @@ def train_single_model(model_name, model, train_loader, valid_loader, test_loade
 
     scheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, args.epochs)
     
-    if model_name in ['prithvi', 'prithvi_unet']:
+    if model_name in ['prithvi_sen1floods', 'prithvi_unet']:
         model.change_prithvi_trainability(False)
         logger.info(f"Prithvi weights frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+        num_params_phase_1 = get_number_of_trainable_parameters(model)
     
     for epoch in range(args.epochs):
         logger.info(f"\n{model_name} - Epoch {epoch+1}/{args.epochs}")
@@ -183,12 +191,13 @@ def train_single_model(model_name, model, train_loader, valid_loader, test_loade
         if (epoch + 1) % args.save_model_interval == 0:
             torch.save(model.state_dict(), os.path.join(model_dir, f"model_epoch_{epoch+1}.pt"))
     
-    if model_name in ['prithvi', 'prithvi_unet'] and args.prithvi_finetune_ratio is not None:
+    if model_name in ['prithvi_sen1floods', 'prithvi_unet'] and args.prithvi_finetune_ratio is not None:
         logger.info(f"\nFine-tuning {model_name}")
         
         finetune_epochs = int(args.epochs * args.prithvi_finetune_ratio)
         model.change_prithvi_trainability(True)
         logger.info(f"Prithvi weights unfrozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+        num_params_phase_2 = get_number_of_trainable_parameters(model)
         
         finetune_lr = args.learning_rate * 0.1
         optimizer = torch.optim.AdamW(model.parameters(), lr=finetune_lr)
@@ -227,7 +236,10 @@ def train_single_model(model_name, model, train_loader, valid_loader, test_loade
     
     return {
         'model_name': model_name,
-        'num_parameters': num_params,
+        'num_trainable_params': num_params,
+        'num_total_params': num_params_total,
+        'params_phase_1': num_params_phase_1,
+        'params_phase_2': num_params_phase_2,
         'test_metrics': test_metrics,
         'bolivia_metrics': bolivia_metrics
     }
@@ -256,8 +268,8 @@ def main(args):
             out_channels=args.num_classes, 
             unet_encoder_size=args.unet_out_channels
         ),
-        'prithvi': PritviSegmenter(
-            weights_path='./prithvi/Prithvi_100M.pt', 
+        'prithvi_sen1floods': PritviSegmenter(
+            weights_path='./prithvi/Prithvi_EO_V1_100M.pt', 
             device=device, 
             output_channels=args.num_classes, 
             prithvi_encoder_size=args.prithvi_out_channels
@@ -265,7 +277,7 @@ def main(args):
         'prithvi_unet': PrithviUNet(
             in_channels=args.in_channels, 
             out_channels=args.num_classes, 
-            weights_path='./prithvi/Prithvi_100M.pt', 
+            weights_path='./prithvi/Prithvi_EO_V1_100M.pt', 
             device=device, 
             prithvi_encoder_size=args.prithvi_out_channels, 
             unet_encoder_size=args.unet_out_channels, 
@@ -286,34 +298,11 @@ def main(args):
         del model
         torch.cuda.empty_cache() if torch.cuda.is_available() else None
     
-    logger.info(f"\n{'='*100}")
-    logger.info("COMPARISON SUMMARY")
-    logger.info(f"{'='*100}")
-    logger.info(f"{'Model':<20} {'Parameters':<15} {'Test IOU':<12} {'Test ACC':<12} {'Bolivia IOU':<12} {'Bolivia ACC':<12}")
-    logger.info(f"{'-'*100}")
-    
-    for result in results:
-        logger.info(
-            f"{result['model_name']:<20} "
-            f"{result['num_parameters']:,<15} "
-            f"{result['test_metrics']['Avg_IOU']:<12.4f} "
-            f"{result['test_metrics']['Avg_ACC']:<12.4f} "
-            f"{result['bolivia_metrics']['Avg_IOU']:<12.4f} "
-            f"{result['bolivia_metrics']['Avg_ACC']:<12.4f}"
-        )
-    
     results_file = os.path.join(base_log_dir, 'comparison_results.json')
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=4, default=float)
     logger.info(f"\nResults saved to: {results_file}")
     
-    best_test_iou = max(results, key=lambda x: x['test_metrics']['Avg_IOU'])
-    best_bolivia_iou = max(results, key=lambda x: x['bolivia_metrics']['Avg_IOU'])
-    
-    logger.info(f"\n{'='*100}")
-    logger.info(f"Best model on Test set (IOU): {best_test_iou['model_name']} ({best_test_iou['test_metrics']['Avg_IOU']:.4f})")
-    logger.info(f"Best model on Bolivia set (IOU): {best_bolivia_iou['model_name']} ({best_bolivia_iou['bolivia_metrics']['Avg_IOU']:.4f})")
-    logger.info(f"{'='*100}\n")
 
 if __name__ == '__main__':
     args = parse_arguments()
