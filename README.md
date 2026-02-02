@@ -23,6 +23,11 @@ chmod +x datasets/installds.sh
 ./datasets/installds.sh
 ```
 
+```
+# Clone Prithvi from HF
+git clone https://huggingface.co/ibm-nasa-geospatial/Prithvi-EO-1.0-100M ./prithvi
+```
+
 ## Training
 
 The training script (`train.py`) implements a comprehensive comparison framework for three segmentation models: U-Net, Prithvi, and Prithvi-UNet (U-Prithvi). It includes support for multiple loss functions, two-phase training for Prithvi-based models, and automatic evaluation on both test and Bolivia datasets.
