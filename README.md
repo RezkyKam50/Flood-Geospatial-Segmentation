@@ -30,7 +30,7 @@ The training script (`train.py`) implements a comprehensive comparison framework
 ### Basic Training Command
 
 ```bash
-python train.py \
+python ./exp/train.py \
     --data_path ./datasets/sen1floods11_v1.1 \
     --epochs 100 \
     --batch_size 12 \
@@ -85,7 +85,7 @@ python train.py --epochs 5 --loss_func bce
 
 **Full training with focal loss (100 epochs):**
 ```bash
-python train.py \
+python ./exp/train.py \
     --epochs 100 \
     --batch_size 16 \
     --learning_rate 5e-4 \
@@ -95,7 +95,7 @@ python train.py \
 
 **Training with Lovasz loss and custom architecture:**
 ```bash
-python train.py \
+python ./exp/train.py \
     --epochs 100 \
     --loss_func lovasz \
     --prithvi_out_channels 512 \
@@ -106,7 +106,7 @@ python train.py \
 
 **Training with extended fine-tuning:**
 ```bash
-python train.py \
+python ./exp/train.py \
     --epochs 50 \
     --prithvi_finetune_ratio 2 \
     --loss_func focal \
@@ -169,7 +169,7 @@ Performs inference on the sen1floods11 Bolivia test set and generates comparativ
 
 **Basic Usage:**
 ```bash
-python infer_bolivia.py \
+python ./exp/infer/infer_bolivia.py \
     --data_path ./datasets/sen1floods11_v1.1 \
     --split bolivia \
     --output_path ./outputs/bolivia_results \
@@ -216,12 +216,12 @@ models_paths = {
 **Example Command:**
 ```bash
 # Inference on Bolivia test set
-python infer_bolivia.py \
+python ./exp/infer/infer_bolivia.py \
     --split bolivia \
     --output_path ./outputs/bolivia_focal_100e
 
 # Inference on regular test set
-python infer_bolivia.py \
+python ./exp/infer/infer_bolivia.py \
     --split test \
     --output_path ./outputs/test_results
 ```
@@ -232,7 +232,7 @@ Performs cross-resolution domain shift inference on the Timor-Leste ML4Floods da
 
 **Basic Usage:**
 ```bash
-python infer_timor.py \
+python ./exp/infer/infer_timor.py \
     --data_path ./datasets/Timor_ML4Floods \
     --output_path ./outputs/timor_results \
     --aoi all
@@ -284,13 +284,13 @@ Timor-Leste ground truth uses 2-band format:
 **Example Commands:**
 ```bash
 # Process all AOIs
-python infer_timor.py --aoi all
+python ./exp/infer/infer_timor.py --aoi all
 
 # Process specific AOI
-python infer_timor.py --aoi 03 --output_path ./outputs/timor_aoi03
+python ./exp/infer/infer_timor.py --aoi 03 --output_path ./outputs/timor_aoi03
 
 # Process with custom model path
-python infer_timor.py \
+python ./exp/infer/infer_timor.py \
     --aoi all \
     --output_path ./outputs/timor_custom \
     --weights_path ./prithvi/Prithvi_EO_V1_100M.pt
