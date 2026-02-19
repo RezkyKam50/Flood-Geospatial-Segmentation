@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2026/dev/Arch Linux) (preloaded format=pdflatex 2026.1.8)  3 FEB 2026 21:48
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (TeX Live 2026/dev/Arch Linux) (preloaded format=pdflatex 2026.1.8)  8 FEB 2026 20:18
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -447,21 +447,9 @@ Package tocloft Warning: \@starttoc has already been redefined; tocloft bailing
 )
 \c@theorem=\count309
 Package hyperref Info: Option `colorlinks' set `true' on input line 64.
-
-
-! LaTeX Error: Command \proof already defined.
-               Or name \end... illegal, see p.192 of the manual.
-
-See the LaTeX manual or LaTeX Companion for explanation.
-Type  H <return>  for immediate help.
- ...                                              
-                                                  
-l.67 ...Proof.}\quad}{\hfill$\square$\vspace{5pt}}
-                                                  
-? 
 Package csquotes Info: Checking for multilingual support...
 Package csquotes Info: ... none found.
-(/usr/share/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
+ (/usr/share/texmf-dist/tex/latex/l3backend/l3backend-pdftex.def
 File: l3backend-pdftex.def 2024-05-08 L3 backend support: PDF output (pdfTeX)
 \l__color_backend_stack_int=\count310
 \l__pdf_internal_box=\box56
@@ -469,30 +457,30 @@ File: l3backend-pdftex.def 2024-05-08 L3 backend support: PDF output (pdfTeX)
 (./proposal.aux)
 \openout1 = `proposal.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 74.
-LaTeX Font Info:    ... okay on input line 74.
-LaTeX Font Info:    Trying to load font information for U+msa on input line 74.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 71.
+LaTeX Font Info:    ... okay on input line 71.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 71.
 
  (/usr/share/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 74.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 71.
 
 
 (/usr/share/texmf-dist/tex/latex/amsfonts/umsb.fd
@@ -520,7 +508,7 @@ Package epstopdf-base Info: Redefining graphics rule for `.eps' on input line 4
 File: epstopdf-sys.cfg 2010/07/13 v1.3 Configuration of (r)epstopdf for TeX Liv
 e
 ))
-Package hyperref Info: Link coloring ON on input line 74.
+Package hyperref Info: Link coloring ON on input line 71.
  (./proposal.out) (./proposal.out)
 \@outlinefile=\write3
 \openout3 = `proposal.out'.
@@ -560,79 +548,51 @@ Package hyperref Info: Link coloring ON on input line 74.
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-<logoBINUS.png, id=48, 597.432pt x 597.432pt>
-File: logoBINUS.png Graphic file (type png)
-<use logoBINUS.png>
-Package pdftex.def Info: logoBINUS.png  used on input line 87.
-(pdftex.def)             Requested size: 188.8096pt x 188.81197pt.
+
+Overfull \hbox (36.02087pt too wide) in paragraph at lines 119--121
+[]\OT1/cmr/bx/n/10 Band Se-lec-tion and Nor-mal-iza-tion: \OT1/cmr/m/n/10 Six S
+entinel-2 bands were used: $\OMS/cmsy/m/n/10 B \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/
+10 f[]\OML/cmm/m/it/10 ; []; []; []; []; []\OMS/cmsy/m/n/10 g$\OT1/cmr/m/n/10 .
+
+ []
 
 
-[0
 
-{/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map} <./logoBINUS.png>]
+[1{/var/lib/texmf/fonts/map/pdftex/updmap/pdftex.map}]
+Overfull \hbox (35.83049pt too wide) in paragraph at lines 190--192
+\OT1/cmr/m/n/10 (AOI), with cor-re-spond-ing satel-lite sources $\OMS/cmsy/m/n/
+10 S \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 f[]\OML/cmm/m/it/10 ; []; []; []; []\OM
+S/cmsy/m/n/10 g$\OT1/cmr/m/n/10 . 
+ []
 
-[1]
-! Missing } inserted.
-<inserted text> 
-                }
-l.155 \tableofcontents
-                      
-? 
-! Extra }, or forgotten \endgroup.
-\NR@sect ...svsec }{\interlinepenalty \@M #8\par }
-                                                  \endgroup \ifnum #2>\@m \e...
-l.155 \tableofcontents
-                      
-? 
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\endgroup' on input line 155.
-
-(./proposal.toc
-! Missing } inserted.
-<inserted text> 
-                }
-l.1 ...tsline {section}{\endgroup }{2}{section*.1}
-                                                  %
-? 
-! Missing } inserted.
-<inserted text> 
-                }
-l.1 ...tsline {section}{\endgroup }{2}{section*.1}
-                                                  %
-? 
-! Too many }'s.
-\l@section ...k \hskip -\leftskip {\cftsecfont #1}
-                                                  \nobreak \cftsecfillnum {#...
-l.1 ...tsline {section}{\endgroup }{2}{section*.1}
-                                                  %
-? 
-! Too many }'s.
-\l@section ...ont #1}\nobreak \cftsecfillnum {#2}}
-                                                  \fi 
-l.1 ...tsline {section}{\endgroup }{2}{section*.1}
-                                                  %
-? 
-)
-\tf@toc=\write4
-\openout4 = `proposal.toc'.
-
-
-! Extra \endgroup.
-\@starttoc ...fi \global \@nobreakfalse \endgroup 
-                                                  \addvspace {32\p@ \@plus 1...
-l.155 \tableofcontents
-                      
-? 
 
 
 [2]
 
 [3]
 
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 276.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 276.
+
+
+Overfull \hbox (17.2476pt too wide) in paragraph at lines 303--316
+[]\OT1/cmr/m/n/10 Both Sen1Floods11 and ML4Floods use a stan-dard-ized 15-band 
+for-mat, but for dif-fer-ent rea-sons: Sen1Floods11
+ []
+
+
+
 [4]
 
 [5]
+
+LaTeX Warning: Empty `thebibliography' environment on input line 334.
+
+
 
 [6] (./proposal.aux)
  ***********
@@ -640,26 +600,35 @@ LaTeX2e <2024-11-01> patch level 2
 L3 programming layer <2025-01-18>
  ***********
 Package rerunfilecheck Info: File `proposal.out' has not changed.
-(rerunfilecheck)             Checksum: 0A1299101840FC755F9CB65CA3A98D90;1516.
+(rerunfilecheck)             Checksum: 1BB8A3EEED8FA9CEE4DD07D8B26AD65F;2198.
  ) 
 Here is how much of TeX's memory you used:
- 12899 strings out of 475171
- 192891 string characters out of 5767096
- 618488 words of memory out of 5000000
+ 12933 strings out of 475171
+ 193326 string characters out of 5767096
+ 632343 words of memory out of 5000000
  35543 multiletter control sequences out of 15000+600000
- 565804 words of font info for 63 fonts, out of 8000000 for 9000
+ 569989 words of font info for 78 fonts, out of 8000000 for 9000
  175 hyphenation exceptions out of 8191
- 75i,11n,79p,1181b,590s stack positions out of 10000i,1000n,20000p,200000b,200000s
-</usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/
-texmf-dist/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/share/texmf-dist/fon
-ts/type1/public/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public
-/amsfonts/cm/cmr12.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cm
-r8.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/s
-hare/texmf-dist/fonts/type1/public/amsfonts/cm/cmti10.pfb>
-Output written on proposal.pdf (7 pages, 297779 bytes).
+ 75i,17n,79p,597b,517s stack positions out of 10000i,1000n,20000p,200000b,200000s
+</usr/share/texmf-dist/fonts/type1/public/amsfonts/cmextra/cmbsy7.pfb></usr/s
+hare/texmf-dist/fonts/type1/public/amsfonts/cm/cmbx10.pfb></usr/share/texmf-dis
+t/fonts/type1/public/amsfonts/cm/cmbx12.pfb></usr/share/texmf-dist/fonts/type1/
+public/amsfonts/cm/cmbx7.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts
+/cm/cmex10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi10.pfb
+></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmmi7.pfb></usr/share/te
+xmf-dist/fonts/type1/public/amsfonts/cm/cmmib10.pfb></usr/share/texmf-dist/font
+s/type1/public/amsfonts/cmextra/cmmib7.pfb></usr/share/texmf-dist/fonts/type1/p
+ublic/amsfonts/cm/cmr10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/
+cm/cmr5.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmr7.pfb></us
+r/share/texmf-dist/fonts/type1/public/amsfonts/cm/cmsy10.pfb></usr/share/texmf-
+dist/fonts/type1/public/amsfonts/cm/cmsy7.pfb></usr/share/texmf-dist/fonts/type
+1/public/amsfonts/cm/cmti10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfo
+nts/cm/cmtt10.pfb></usr/share/texmf-dist/fonts/type1/public/amsfonts/symbols/ms
+bm10.pfb>
+Output written on proposal.pdf (6 pages, 215311 bytes).
 PDF statistics:
- 163 PDF objects out of 1000 (max. 8388607)
- 136 compressed objects within 2 object streams
- 39 named destinations out of 1000 (max. 500000)
- 94 words of extra memory for PDF output out of 10000 (max. 10000000)
+ 228 PDF objects out of 1000 (max. 8388607)
+ 184 compressed objects within 2 object streams
+ 66 named destinations out of 1000 (max. 500000)
+ 97 words of extra memory for PDF output out of 10000 (max. 10000000)
 

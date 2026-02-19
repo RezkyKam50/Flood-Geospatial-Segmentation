@@ -27,6 +27,8 @@ INPUT_SIZE = 224
 S2_MEANS = [0.14245495, 0.13921481, 0.12434631, 0.31420089, 0.20743526,0.12046503]
 S2_STDS = [0.04036231, 0.04186983, 0.05267646, 0.0822221 , 0.06834774, 0.05294205]
 
+torch.manual_seed(124)
+
 def processAndAugment(data):
     img,label = data
     img = img[USED_BANDS, :, :].astype(np.float32)

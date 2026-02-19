@@ -6,11 +6,10 @@ from models.blocks import UpBlock, Block
 class PritviSegmenter(nn.Module):
     BOTTLENECK_WIN_SIZE = 14
     
-    def __init__(self, weights_path, device, output_channels, prithvi_encoder_size = 768, trainable = None):
+    def __init__(self, weights_path, device, output_channels, prithvi_encoder_size = 768):
         super(PritviSegmenter, self).__init__()
         self.device = device
         self.encoder = PrithviEncoder(weights_path, device, target_channels=prithvi_encoder_size).to(device)
-        self.change_prithvi_trainability(trainable)
         self.output_channels = output_channels
 
         # Decoder
@@ -24,16 +23,19 @@ class PritviSegmenter(nn.Module):
     def change_prithvi_trainability(self, trainable):
         for param in self.encoder.prithvi.parameters():
             param.requires_grad = trainable
-        
-    def forward(self, x):
+
+    def forward_features(self, x):
         x = self.encoder(x)
-        
-        # Decoder
         x = self.up1(x)
         x = self.up2(x)
         x = self.up3(x)
         x = self.up4(x)
-        x = self.final_block(x)
+
+        return x
+
+    def forward(self, x):
+        x = self.forward_features(x)
+        x = self.final_block(x)   
         return x
     
 

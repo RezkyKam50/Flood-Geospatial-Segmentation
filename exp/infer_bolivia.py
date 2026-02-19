@@ -3,6 +3,7 @@ import sys
 import argparse
 import logging
 from enum import Enum
+import json
 import torch
 from data_loading.sen1floods11 import processTestIm
 import rasterio
@@ -31,9 +32,9 @@ NUM_CLASSES = 2
 IN_CHANNELS = 6
 
 models_paths = {
-    'unet': 'logs/bolivia_100E_FOCAL/unet/models/model_final.pt',
-    'prithvi': 'logs/bolivia_100E_FOCAL/prithvi_sen1floods/models/model_final.pt',
-    'prithvi_unet': 'logs/bolivia_100E_FOCAL/prithvi_unet/models/model_final.pt',
+    'unet': 'logs/Bolivia_100E_TVERSKY_A0.3_B0.7_G2.0_E100_seed_12/unet/models/model_final.pt',
+    'prithvi': 'logs/Bolivia_100E_TVERSKY_A0.3_B0.7_G2.0_E100_seed_124/prithvi/models/model_final.pt',
+    'prithvi_unet': './logs/Bolivia_100E_TVERSKY_A0.3_B0.7_G0.75_E100_seed_48/prithvi_unet/models/model_final.pt',
 }
 
 def parse_arguments():
@@ -317,7 +318,6 @@ def main():
     device = torch.device('mps') if torch.backends.mps.is_available() else device
     logger.info(f'Using device: {device}')
 
-     
     data_files = load_data_from_txt(args.data_path, args.split)
     logger.info(f'Loaded {len(data_files)} samples from {args.split} split')
     
@@ -326,8 +326,19 @@ def main():
     for model_type in model_names:
         args.model_type = model_type
         models[model_type] = load_model(args.model_type, models_paths[model_type], device, args.weights_path)
-     
+
+    # Cumulative confusion matrices for overall (aggregated) metrics
     confusion_matrices = {model_type: {'TP': 0, 'FP': 0, 'TN': 0, 'FN': 0} for model_type in model_names}
+
+    # Per-image metrics lists for standard deviation computation
+    per_image_metrics = {model_type: {
+        'IOU_floods': [],
+        'IOU_non_floods': [],
+        'Avg_IOU': [],
+        'ACC_floods': [],
+        'ACC_non_floods': [],
+        'Avg_ACC': []
+    } for model_type in model_names}
     
     for filename, mask_filename in data_files:
         image = rasterio.open(os.path.join(args.data_path, 'data/S2L1CHand', filename)).read()
@@ -348,6 +359,11 @@ def main():
             confusion_matrices[model_type]['FP'] += cm['FP']
             confusion_matrices[model_type]['TN'] += cm['TN']
             confusion_matrices[model_type]['FN'] += cm['FN']
+
+            # Compute per-image metrics and store for std dev
+            img_metrics = calculate_metrics_from_confusion(cm)
+            for metric_name, value in img_metrics.items():
+                per_image_metrics[model_type][metric_name].append(value)
 
         print(mask.max(), mask.min())
          
@@ -390,12 +406,49 @@ def main():
         final_image = Image.fromarray(final_image)
         final_image.save(os.path.join(args.output_path, f'{filename}.png'))
         logger.info(f'Saved visualization to {os.path.join(args.output_path, f"{filename}.png")}')
-     
+
+    logger.info('\n' + '=' * 60)
+    logger.info('OVERALL mIoU RESULTS')
+    logger.info('=' * 60)
+
+    results = {}
+
     for model_type in model_names:
         metrics = calculate_metrics_from_confusion(confusion_matrices[model_type])
-        logger.info(f"{model_type:15} - Mean mIoU: {metrics['Avg_IOU']:.4f} (Flood: {metrics['IOU_floods']:.4f}, Non-flood: {metrics['IOU_non_floods']:.4f})")
-    
+
+        # Compute standard deviation across per-image metrics
+        std_metrics = {
+            metric_name: float(np.std(values))
+            for metric_name, values in per_image_metrics[model_type].items()
+        }
+
+        logger.info(
+            f"{model_type:15} - Mean mIoU: {metrics['Avg_IOU']:.4f} ± {std_metrics['Avg_IOU']:.4f} "
+            f"(Flood: {metrics['IOU_floods']:.4f} ± {std_metrics['IOU_floods']:.4f}, "
+            f"Non-flood: {metrics['IOU_non_floods']:.4f} ± {std_metrics['IOU_non_floods']:.4f})"
+        )
+
+        results[model_type] = {
+            'test_metrics': {
+                'IOU_floods': metrics['IOU_floods'],
+                'IOU_non_floods': metrics['IOU_non_floods'],
+                'Avg_IOU': metrics['Avg_IOU'],
+                'ACC_floods': metrics['ACC_floods'],
+                'ACC_non_floods': metrics['ACC_non_floods'],
+                'Avg_ACC': metrics['Avg_ACC']
+            },
+            'std_metrics': std_metrics,
+            'confusion_matrix': {k: int(v) for k, v in confusion_matrices[model_type].items()}
+        }
+
     logger.info("=" * 60)
+
+    # Save all metrics (mean + std) for all 3 models to JSON
+    json_output_path = os.path.join(args.output_path, 'metrics_results.json')
+    os.makedirs(args.output_path, exist_ok=True)
+    with open(json_output_path, 'w') as f:
+        json.dump(results, f, indent=4)
+    logger.info(f'Metrics saved to: {json_output_path}')
 
 if __name__ == '__main__':
     main()

@@ -3,7 +3,7 @@ import torch.nn.functional as F
 import torch
 import torch.nn as nn
 from torch.nn.utils.parametrizations import spectral_norm
-from models.prithvi_unet import PrithviUNet
+from models.prithvi_segmenter import PritviSegmenter
  
 # Dual Stream UNet3+  
 
@@ -30,12 +30,12 @@ class DSUNet3P(nn.Module):
         self.use_prithvi = use_prithvi
         # prithvi
         if self.use_prithvi:
-            self.prithvi = PrithviUNet(
-                in_channels=n_s2_bands,
-                out_channels=out,
+            self.prithvi = PritviSegmenter(
                 weights_path=cfg.MODEL.PRITHVI_PATH,
-                device="cuda" if torch.cuda.is_available() else "cpu"
-            ) # prithvi encoder + unet segmentation decoder
+                device="cuda" if torch.cuda.is_available() else "cpu",
+                prithvi_encoder_size=cfg.MODEL.TOPOLOGY[-1],
+                output_channels=out
+            ) # prithvi encoder 
             out_dim = 2 * cfg.MODEL.TOPOLOGY[0] + 2 # N channels x Topo First idx 
         else:
             out_dim = 2 * cfg.MODEL.TOPOLOGY[0] # N channels x Topo First idx 
@@ -45,6 +45,14 @@ class DSUNet3P(nn.Module):
     def change_prithvi_trainability(self, trainable):
         if self.use_prithvi:
             self.prithvi.change_prithvi_trainability(trainable)
+
+    def change_s1_trainability(self, trainable):
+        for param in self.s1_stream.parameters():
+            param.requires_grad = trainable
+
+    def change_s2_trainability(self, trainable):
+        for param in self.s2_stream.parameters():
+            param.requires_grad = trainable
 
     def forward(self, s1_img, s2_img, dem_img):
 
@@ -94,7 +102,7 @@ class encoder_block(nn.Module):
 class OutConv(nn.Module):
     def __init__(self, in_ch, out_ch):
         super().__init__()
-        self.conv = spectral_norm(nn.Conv2d(in_ch, out_ch, 1), "weight", n_power_iterations=3) # spectral norm, see https://arxiv.org/abs/1802.05957
+        self.conv = nn.Conv2d(in_ch, out_ch, 1) # spectral norm, see https://arxiv.org/abs/1802.05957
 
     def forward(self, x):
         return self.conv(x)

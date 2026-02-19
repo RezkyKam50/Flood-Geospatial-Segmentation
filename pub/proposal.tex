@@ -63,9 +63,6 @@
     pdfauthor={Rezky Mulia Kam}
 }
 
-% Proof environment
-\newenvironment{proof}{\noindent\textit{Proof.}\quad}{\hfill$\square$\vspace{5pt}}
-
 % Custom table of contents formatting
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsecfont}{\normalfont}
@@ -74,164 +71,258 @@
 \begin{document}
 
 % ============================================
-% COVER PAGE
-% ============================================
-\begin{titlepage}
-    \centering
-    
-    % Main title
-    {\Large \bfseries Geo-AI for Disaster\par}
-    
-    % University logo
-    \vspace*{1.4cm}
-    \includegraphics[width=0.4\textwidth]{logoBINUS.png}
-    
-    \vspace{2cm}
-
-    % Department and university
-    {\large Rezky Mulia Kam\par}
-    {\large 2702260773\par}
-
-    \vspace{2.5cm}
-    {\large Computer Science Program\par}
-    \vspace{0.4cm}
-    {\large School of Computer Science (SOCS)\par}
-    \vspace{0.4cm}
-    {\large BINUS UNIVERSITY\par}
-    \vspace{0.4cm}
-    {\large West Jakarta, Indonesia\par}
-    \vspace{0.4cm}
-    {\large 2026\par}
-
-    \vspace{1.5cm}
-    
-    \newpage
-
-    % Subtitle
-    {\Large Research Report\par}
-    {\large As one of the requirements for Enrichment Program Course\par}
-    
-    \vspace{2cm}
-    
-    % Author information
-    {\large By\par}
-    \vspace{0.5cm}
-    {\Large Rezky Mulia Kam\par}
-    {\large 2702260773\par}
-    
-    \vspace{3cm}
-    
-    \vspace{6cm}
-    
-    % Placeholder for signatures
-    \begin{minipage}[t]{0.5\textwidth}
-        \centering
-        \underline{\hspace{6cm}}\\
-        Faculty Supervisor\\
-        \vspace{1cm}
-        ID: \underline{\hspace{4cm}} \\
-        \vspace{1cm}
-        Date: \underline{\hspace{4cm}} 
-    \end{minipage}%
-    \begin{minipage}[t]{0.5\textwidth}
-        \centering
-        \underline{\hspace{6cm}}\\
-        Supervisor\\
-        \vspace{1cm}
-        ID: \underline{\hspace{4cm}} \\
-        \vspace{1cm}
-        Date: \underline{\hspace{4cm}}
-    \end{minipage}
-    
-    \vfill
-\end{titlepage}
-
-\newpage
-
-% ============================================
-% TABLE OF CONTENTS
-% ============================================
-\renewcommand{\contentsname}{Table of Contents}
-\tableofcontents
-\newpage
-
-% ============================================
 % MAIN CONTENT
 % ============================================
-\section{Abstract}
-This proposal explores the application of Geo-Artificial Intelligence (Geo-AI) to enhance disaster management frameworks. The increasing frequency and severity of natural disasters demand innovative approaches for prediction, preparedness, response, and recovery. This research aims to investigate how the integration of Artificial Intelligence (AI)—particularly machine learning and deep learning—with geospatial technologies (GIS, remote sensing) can create more resilient and efficient disaster management systems. The study will develop and evaluate predictive models, analyze real-time geospatial data, and propose a framework for resource optimization during crises. The anticipated outcome is a validated Geo-AI methodology that can improve decision-making accuracy and reduce human and economic losses.
+\section{UNet and U-Prithvi}
+The UNet architecture is based off the original paper with slightly different Topology.
+U-Prithvi is a combination of UNet with Prithvi encoder, where UNet benefits from representation learning 
+from phase 1 to 2, phase 2 will train the entire Prithvi architecture where phase 1 takes account for UNet to learn 
+features from the frozen encoder of Prithvi.
 
-\noindent\textbf{Keywords:} Geo-AI, Disaster Management, Artificial Intelligence, Geospatial Analysis, Predictive Modeling
+\subsection{Encoder Topology}
+\begin{align}
+x_1 &= \text{DownBlock}(x) : \mathbb{R}^{C \times 224 \times 224} \to \mathbb{R}^{4C \times 112 \times 112} \\
+x_2 &= \text{DownBlock}(x_1) : \mathbb{R}^{4C \times 112 \times 112} \to \mathbb{R}^{16C \times 56 \times 56} \\
+x_3 &= \text{DownBlock}(x_2) : \mathbb{R}^{16C \times 56 \times 56} \to \mathbb{R}^{64C \times 28 \times 28} \\
+x_{\text{bottleneck}} &= \text{DownBlock}(x_3) : \mathbb{R}^{64C \times 28 \times 28} \to \mathbb{R}^{768 \times 14 \times 14}
+\end{align}
+
+\subsection{Prithvi Encoder Path}
+\begin{equation}
+x_{\text{prithvi}} = \text{PrithviEncoder}(x) : \mathbb{R}^{C \times 224 \times 224} \to \mathbb{R}^{768 \times 14 \times 14}
+\end{equation}
+
+\subsection{Feature Combination}
+\begin{equation}
+x_{\text{combined}} = \begin{cases}
+[x_{\text{bottleneck}}, x_{\text{prithvi}}] & \text{if concat} : \mathbb{R}^{1536 \times 14 \times 14} \\
+x_{\text{bottleneck}} + x_{\text{prithvi}} & \text{if add} : \mathbb{R}^{768 \times 14 \times 14} \\
+x_{\text{bottleneck}} \odot x_{\text{prithvi}} & \text{if mul} : \mathbb{R}^{768 \times 14 \times 14}
+\end{cases}
+\end{equation}
+
+\subsection{Decoder Topology}
+\begin{align}
+y_1 &= \text{UpBlock}(x_{\text{combined}}) : \mathbb{R}^{D \times 14 \times 14} \to \mathbb{R}^{64C \times 28 \times 28} \\
+y_2 &= \text{UpBlockWithSkip}([y_1, x_3]) : \mathbb{R}^{128C \times 28 \times 28} \to \mathbb{R}^{16C \times 56 \times 56} \\
+y_3 &= \text{UpBlockWithSkip}([y_2, x_2]) : \mathbb{R}^{32C \times 56 \times 56} \to \mathbb{R}^{4C \times 112 \times 112} \\
+y_4 &= \text{UpBlockWithSkip}([y_3, x_1]) : \mathbb{R}^{8C \times 112 \times 112} \to \mathbb{R}^{C \times 224 \times 224} \\
+\hat{y} &= \text{Conv2d}(y_4) : \mathbb{R}^{C \times 224 \times 224} \to \mathbb{R}^{C_{\text{out}} \times 224 \times 224}
+\end{align}
+
+where $C = \text{in\_channels}$, $C_{\text{out}} = \text{out\_channels}$, $D = 1536$ (concat) or $768$ (add/mul), and $[\cdot, \cdot]$ denotes channel-wise concatenation. 14 denotes as the initial N patches of the Prithvi encoder.
+
+
+\section{Sen1Floods11 Preprocess}
+The dataset consists of 15 Bolivia test samples, 90 general test samples, 89 validation samples, and 252 training samples.
+
+\textbf{Band Selection and Normalization:}
+Six Sentinel-2 bands were used: $\mathcal{B} = \{\text{BA1}, \text{BA2}, \text{BA3}, \text{BA8}, \text{BA11}, \text{BA12}\}$. However the rest of 9 bands remains unused to match baseline experiment [CITE EVIDENCE].
+
+For the training split $\mathcal{D}$ with 252 samples, preprocessing normalization  from \textit{Kostejn et al.} were adopted:
+\begin{align}
+\boldsymbol{\mu}_{\mathcal{D}} &= [0.1425, 0.1392, 0.1243, 0.3142, 0.2074, 0.1205] \\
+\boldsymbol{\sigma}_{\mathcal{D}} &= [0.0404, 0.0419, 0.0527, 0.0822, 0.0683, 0.0529]
+\end{align}
+
+\textbf{Augmentation Strategy:}
+The training data undergoes stochastic augmentation with the following transformations applied sequentially. Let $(x, y) \in \mathcal{D}$ denote an image-label pair where $x \in \mathbb{R}^{|\mathcal{B}| \times H \times W}$ and $y \in \{0, 1, 255\}^{H \times W}$.
+
+\textit{Step 1: Band Selection and Normalization.}
+\begin{align}
+x' &= x[\mathcal{B}, :, :] \in \mathbb{R}^{6 \times H \times W} \\
+\tilde{x} &= \frac{x' - \boldsymbol{\mu}_{\mathcal{D}}}{\boldsymbol{\sigma}_{\mathcal{D}}}
+\end{align}
+where the normalization is applied channel-wise.
+
+\textit{Step 2: Random Crop.}
+A random spatial crop of size $S \times S$ (where $S = 224$) is extracted:
+\begin{align}
+(i, j) &\sim \mathcal{U}(0, H-S) \times \mathcal{U}(0, W-S) \\
+\tilde{x}_{\text{crop}} &= \tilde{x}[:, i:i+S, j:j+S] \\
+y_{\text{crop}} &= y[i:i+S, j:j+S]
+\end{align}
+
+\textit{Step 3: Random Horizontal Flip.}
+With probability $p_h = 0.5$:
+\begin{align}
+(\tilde{x}_{\text{h}}, y_{\text{h}}) = \begin{cases}
+(\text{flip}_{\text{horizontal}}(\tilde{x}_{\text{crop}}), \text{flip}_{\text{horizontal}}(y_{\text{crop}})) & \text{if } u_h > 0.5 \\
+(\tilde{x}_{\text{crop}}, y_{\text{crop}}) & \text{otherwise}
+\end{cases}
+\end{align}
+where $u_h \sim \mathcal{U}(0, 1)$.
+
+\textit{Step 4: Random Vertical Flip.}
+With probability $p_v = 0.5$:
+\begin{align}
+(\tilde{x}_{\text{final}}, y_{\text{final}}) = \begin{cases}
+(\text{flip}_{\text{vertical}}(\tilde{x}_{\text{h}}), \text{flip}_{\text{vertical}}(y_{\text{h}})) & \text{if } u_v > 0.5 \\
+(\tilde{x}_{\text{h}}, y_{\text{h}}) & \text{otherwise}
+\end{cases}
+\end{align}
+where $u_v \sim \mathcal{U}(0, 1)$.
+
+The augmented pair $(\tilde{x}_{\text{final}}, y_{\text{final}})$ is used for training. Note that all random variables $(i, j, u_h, u_v)$ are sampled independently for each training sample with seed initialization \texttt{torch.manual\_seed(124)}.
+
+\textbf{Test Data Processing:}
+For evaluation, each test image of size $2S \times 2S$ is partitioned into four non-overlapping patches:
+\begin{align}
+\{\tilde{x}_k\}_{k=1}^{4} &= \left\{\tilde{x}[:, iS:(i+1)S, jS:(j+1)S] \mid (i,j) \in \{(0,0), (0,1), (1,0), (1,1)\}\right\} \\
+\{y_k\}_{k=1}^{4} &= \left\{y[iS:(i+1)S, jS:(j+1)S] \mid (i,j) \in \{(0,0), (0,1), (1,0), (1,1)\}\right\}
+\end{align}
+Each patch $\tilde{x}_k \in \mathbb{R}^{6 \times S \times S}$ is processed independently during inference, with no augmentation applied.
+
+\textbf{Label Encoding:}
+The label mask $y$ contains three classes: water (1), land (0), and invalid/cloud pixels (255), where
+\begin{equation}
+y \in \{0, 1, 255\}^{H \times W}, \quad \text{with} \quad y[y = -1] \leftarrow 255
+\end{equation}
+indicating that pixels originally marked as $-1$ are remapped to the ignore index 255.
+
+
+\section{WorldFloodsV2}
+The test set comprises samples from EMSR507 (Timor Leste) across five Areas of Interest (AOI), respectively, AOI01, AOI02, AOI03, AOI05, AOI07. Each with 15 different bands, which are the same as Sen1Floods11 where the rest 9 bands remains unused to match baseline experiment.:
+\begin{align}
+\text{AOI samples: } \{5, 17, 32, 17, 6\} \quad \Rightarrow \quad |\mathcal{G}| = 77 \text{ total samples}
+\end{align}
+
+\textbf{Event Catalog:}
+Let $\mathcal{G} = \{\text{AOI01}, \text{AOI02}, \text{AOI03}, \text{AOI05}, \text{AOI07}\}$ denote the set of Areas of Interest (AOI), with corresponding satellite sources $\mathcal{S} = \{\text{Pleiades-1A-1B}, \text{PlanetScope}, \text{PlanetScope}, \text{Sentinel-2}, \text{PlanetScope}\}$.
+
+\textbf{Sliding Window Patch Extraction:}
+Given a multi-spectral image $X \in \mathbb{R}^{C \times H \times W}$ where $C$ is the number of spectral bands, $H$ and $W$ are the spatial dimensions, patches are extracted using a sliding window approach with parameters:
+\begin{align}
+P &= 224 \quad \text{(patch size)} \\
+\sigma &= 224 \quad \text{(stride)}
+\end{align}
+
+For each spatial position $(i, j)$ where $i \in \{0, \sigma, 2\sigma, \ldots\}$ and $j \in \{0, \sigma, 2\sigma, \ldots\}$, a patch is extracted as:
+\begin{align}
+i_{\text{end}} &= \min(i + P, H) & j_{\text{end}} &= \min(j + P, W) \\
+i_{\text{start}} &= \max(i_{\text{end}} - P, 0) & j_{\text{start}} &= \max(j_{\text{end}} - P, 0)
+\end{align}
+
+The extracted patch is then:
+\begin{equation}
+X^{(k)}_{i,j} = X[:, i_{\text{start}}:i_{\text{end}}, j_{\text{start}}:j_{\text{end}}] \in \mathbb{R}^{C \times P \times P}
+\end{equation}
+
+This boundary-aware extraction ensures that all patches maintain the required dimensions $P \times P$, even at image edges, by adjusting the starting coordinates.
+
+\textbf{Patch Enumeration:}
+The total number of patches $N_{\text{patches}}$ extracted from an image of size $H \times W$ is:
+\begin{equation}
+N_{\text{patches}} = \left\lceil \frac{H}{\sigma} \right\rceil \times \left\lceil \frac{W}{\sigma} \right\rceil
+\end{equation}
+
+where $\lceil \cdot \rceil$ denotes the ceiling function. Each patch is indexed sequentially as:
+\begin{equation}
+k = \left\lfloor \frac{i}{\sigma} \right\rfloor \times \left\lceil \frac{W}{\sigma} \right\rceil + \left\lfloor \frac{j}{\sigma} \right\rfloor, \quad k \in \{0, 1, \ldots, N_{\text{patches}}-1\}
+\end{equation}
+
+\textbf{Label Encoding:}
+The ground truth labels $Y \in \{0, 1, 2\}^{H \times W}$ follow a three-class encoding scheme:
+\begin{equation}
+Y(i,j) = \begin{cases}
+0 & \text{invalid/no data} \\
+1 & \text{flood water} \\
+2 & \text{cloud/permanent water}
+\end{cases}
+\end{equation}
+
+\textbf{Patch Preservation:}
+Unlike Sen1Floods11, no augmentation is applied during preprocessing. Each patch $X^{(k)}_{i,j}$ is stored in GeoTIFF format with preserved geospatial metadata:
+\begin{equation}
+\text{save}(X^{(k)}_{i,j}, \text{driver}=\text{GTiff}, \text{dtype}=\text{float32})
+\end{equation}
+
+This maintains radiometric fidelity and spatial reference information for downstream analysis.
+
+
+\subsection{Welford's Online Algorithm}
+To statistically determine how significant is the domain shift, we compute $\boldsymbol{\mu}_{\mathcal{G}}$ and $\boldsymbol{\sigma}_{\mathcal{G}}$ using Welford's algorithm for all Timor Leste samples $\mathcal{G}$.
+
+For each band $\mathcal{B}$ and pixel count $k$:
+\begin{align}
+\delta_{k,\mathcal{B}} &= x_{k,\mathcal{B}} - \mu_{k-1,\mathcal{B}} \\
+\mu_{k,\mathcal{B}} &= \mu_{k-1,\mathcal{B}} + \frac{\delta_{k,\mathcal{B}}}{k} \\
+M_{2,k,\mathcal{B}} &= M_{2,k-1,\mathcal{B}} + \delta_{k,\mathcal{B}}(x_{k,\mathcal{B}} - \mu_{k,\mathcal{B}})
+\end{align}
+After processing all $N$ pixels:
+\begin{align}
+\mu_{\mathcal{B}} &= \mu_{N,\mathcal{B}} \\
+\sigma_\mathcal{B} &= \sqrt{\frac{M_{2,N,\mathcal{B}}}{N}}
+\end{align}
+Finally, normalize  $\hat{\mu}_\mathcal{B}, \hat{\sigma}_\mathcal{B} \in[0, 1]$
+\begin{align}
+\hat{\mu}_\mathcal{B} &= \frac{\mu_\mathcal{B} - x_{\min,\mathcal{B}}}{x_{\max,\mathcal{B}} - x_{\min,\mathcal{B}}} \\
+\hat{\sigma}_\mathcal{B} &= \frac{\sigma_\mathcal{B}}{x_{\max,\mathcal{B}} - x_{\min,\mathcal{B}}}
+\end{align}
+In vectorized form for all six bands:
+\begin{align}
+\boldsymbol{\mu}_{\mathcal{G}} &= [\mu_0, \mu_1, \mu_2, \mu_3, \mu_4, \mu_5]^\top \\
+\boldsymbol{\sigma}_{\mathcal{G}} &= [\sigma_0, \sigma_1, \sigma_2, \sigma_3, \sigma_4, \sigma_5]^\top
+\end{align}
+where $M_{2,N,\mathcal{B}} = \sum_{i=1}^{N} (x_{i,\mathcal{B}} - \mu_{\mathcal{B}})^2$ represents the sum of squared deviations for band $\mathcal{B}$.
+Therefore,
+
+\begin{align}
+\boldsymbol{\mu}_{\mathcal{G}} &= [0.19687379, 0.15455402, 0.14616427, 0.28879896, 0.10955996, 0.23338254]\\
+\boldsymbol{\sigma}_{\mathcal{G}} &= [0.09982086, 0.10291912, 0.10245812, 0.13076263, 0.12043635, 0.12753448]
+\end{align}
+
+
+\subsection{Statistical difference of $\mathcal{D} \text{ and } \mathcal{G}$}
+
+\begin{align}
+\boldsymbol{\Delta\mu_{(\mathcal{D}, \mathcal{G})}} = [0.0544, 0.0154, 0.0219, -0.0254, -0.0979, 0.1129] \\
+\boldsymbol{\Delta\sigma_{(\mathcal{D}, \mathcal{G})}} = [0.0594, 0.0610, 0.0498, 0.0486, 0.0521, 0.0746]
+\end{align}
+
+As computed, the statistical difference between training and OOD test are quiet noticeable giving the different geographical location and satellite sensors. However, since the goal is to measure domain adaptation, hence $\mu_{\mathcal{G}} \text{ \& } \sigma_{\mathcal{G}}$ is not used for inference preprocess normalization.
+
+\subsection{Timor Test Inference}
+Therefore, for each sample $\mathcal{G}$ where $(i, j)$ denotes the pixel position with bands $\mathcal{B}$:
+\begin{equation}
+\text{img}_{\text{normalized}}[b, i, j] = \frac{\text{img}_{\text{input}}[b, i, j] - \mu_{D,\mathcal{B}}}{\sigma_{D,\mathcal{B}}}
+\end{equation}
+
+where:
+\begin{itemize}
+    \item $\mathbf{X}_{\text{in}} \in \mathbb{R}^{B \times H \times W}$ is the input image (selected bands)
+    \item $\boldsymbol{\mu}_D \in \mathbb{R}^{B}$ is the vector of means from dataset $D$
+    \item $\boldsymbol{\sigma}_D \in \mathbb{R}^{B}$ is the vector of standard deviations from dataset $D$
+    \item $\mathbf{X}_{\text{out}} \in \mathbb{R}^{1 \times B \times H \times W}$ is the normalized output with batch dimension
+\end{itemize}
+
+Notice notation $\mathcal{D}$ is used instead of $\mathcal{G}$
+
+
+\section{Bands ambiguity between different satellite sensors [NEEDS CONFIRMATION]}
+Both Sen1Floods11 and ML4Floods use a standardized 15-band format, 
+but for different reasons: Sen1Floods11 contains pure Sentinel-2 L1C 
+imagery with its native 13 spectral bands plus 2 auxiliary bands (likely DEM and terrain features), 
+while ML4Floods deliberately standardizes all its mixed satellite sources (Sentinel-2, PlanetScope, Pleiades) 
+into a common 15-band template to enable unified processing. For ML4Floods, when non-Sentinel-2 imagery is 
+used (like PlanetScope's 4 bands: RGB+NIR, or Pleiades' 4-5 bands), the available bands are mapped to their 
+corresponding positions in the 15-band schema (e.g., NIR always goes to position 7) while unused positions 
+are zero-padded, and the last 2 bands typically contain auxiliary data like DEM and permanent water masks. 
+This standardization allows a single neural network architecture to process all data sources seamlessly—whether 
+the input is full-spectrum Sentinel-2 with all 15 bands populated, or sparse PlanetScope data with only 4-6 
+bands filled—making it possible to batch mixed-source samples together and apply transfer learning across 
+different satellite platforms, which is why both datasets end up with the same 15-band structure despite 
+their fundamentally different data compositions.
  
-\section{Introduction}
-This research proposal outlines a plan to investigate the integration of Geographic Information Systems (GIS) and Artificial Intelligence (AI), termed Geo-AI, to address critical gaps in contemporary disaster management. Natural disasters such as floods, earthquakes, wildfires, and hurricanes cause catastrophic losses globally. Climate change and urbanization are exacerbating these risks, exposing more populations and assets to hazards. Traditional disaster management, while valuable, often struggles with data overload, slow analysis, and predictive inaccuracies. Geo-AI presents a paradigm shift by enabling automated, data-driven insights from vast geospatial datasets. This proposal details the background, objectives, and planned methodology for researching Geo-AI's transformative potential in creating smarter, faster, and more adaptive disaster management solutions.
-
-\subsection{Research Background}
-The field of disaster management has progressively incorporated technological tools, evolving from paper maps to sophisticated digital GIS platforms. Historically, disaster response relied heavily on static maps and post-event assessments. The advent of satellite remote sensing introduced near real-time damage assessment capabilities. However, a significant bottleneck remains in rapidly analyzing this deluge of spatial and temporal data to extract actionable intelligence. Concurrently, AI has revolutionized fields like computer vision and pattern recognition. Geo-AI emerges at the confluence of these domains, aiming to apply AI's analytical power specifically to spatial problems. Initial applications show promise; for instance, machine learning models are being trained to identify flood-prone areas from historical rainfall and terrain data, and convolutional neural networks (CNNs) can assess building damage from pre- and post-disaster satellite imagery. Despite this progress, a comprehensive, standardized framework for deploying Geo-AI across different disaster types and phases is lacking, presenting a clear research opportunity.
-
-\subsection{Research Objectives}
-The primary aim of this research is to design, develop, and preliminarily evaluate a Geo-AI framework tailored for enhancing disaster management cycles. This overarching goal is broken down into the following specific objectives:
-\begin{enumerate}
-    \item To conduct a systematic review of current AI and machine learning techniques (e.g., Random Forest, CNNs, RNNs) applicable to geospatial data for disaster prediction, monitoring, and impact assessment.
-    \item To design a modular Geo-AI architecture that integrates diverse data sources (satellite imagery, IoT sensor data, social media feeds, historical records) for holistic disaster analysis.
-    \item To develop and train prototype AI models focused on two key use cases: (i) predictive modeling for flood susceptibility, and (ii) automated damage assessment from aerial imagery.
-    \item To propose a set of metrics and validation protocols for assessing the performance, accuracy, and operational utility of Geo-AI models in simulated disaster scenarios.
-    \item To identify the technical, ethical, and operational challenges in implementing such a Geo-AI system and suggest pathways for integration with existing emergency response protocols.
-\end{enumerate}
-
-\subsection{Research Questions}
-This study will be guided by the following research questions:
-\begin{enumerate}
-    \item How can Artificial Intelligence techniques be effectively adapted and applied to process and analyze heterogeneous geospatial data for disaster management?
-    \item What is a feasible architectural design for a Geo-AI system that supports the entire disaster management cycle (preparedness, response, recovery, mitigation)?
-    \item To what extent can prototype Geo-AI models improve the accuracy and timeliness of disaster predictions and post-disaster damage assessments compared to conventional methods?
-    \item What are the principal limitations (data quality, computational demand, model interpretability) and ethical considerations (bias, privacy) in deploying Geo-AI for disaster management?
-\end{enumerate}
-
-\subsection{Benefit of Research}
-The successful execution of this research is expected to yield several significant benefits:
-\begin{itemize}
-    \item \textbf{Academic Contribution:} It will contribute to the growing body of knowledge in Geo-AI by providing a structured framework and evaluated methodologies for applying AI in geospatial disaster contexts. It will highlight gaps and future research directions.
-    \item \textbf{Practical Application:} The proposed framework and prototype models can serve as a blueprint for government agencies (e.g., National Disaster Management Authorities) and NGOs to develop or enhance their own early warning and situational awareness systems.
-    \item \textbf{Societal Impact:} By improving prediction accuracy and speeding up response, the research has the potential to save lives, reduce economic losses, and facilitate faster community recovery, thereby increasing societal resilience to disasters.
-    \item \textbf{Policy Influence:} The findings can inform policy makers about the capabilities and requirements of advanced Geo-AI systems, supporting evidence-based decisions for investing in resilient infrastructure and technology.
-\end{itemize}
-
-
-
-
-\section{Literature Review}
-\subsection{Foundations of Geo-AI}
-Geo-AI is an interdisciplinary field synthesizing spatial science, computer science, and statistics. Core to its foundation is the concept of \emph{spatial machine learning}, where algorithms are designed to account for spatial autocorrelation and heterogeneity. Key enabling technologies include cloud computing for handling big geospatial data, advanced remote sensing platforms (e.g., SAR, multispectral sensors), and open-source AI libraries (e.g., TensorFlow, PyTorch) with geospatial extensions. Literature establishes that treating location not just as an attribute but as a fundamental component of the model is crucial for accuracy in environmental applications.
-
-\subsection{AI in Disaster Management Phases}
-A review of recent studies reveals distinct applications per phase:
-\begin{itemize}
-    \item \textbf{Preparedness/Mitigation:} Supervised learning models (e.g., Support Vector Machines, Random Forest) are used to create hazard susceptibility and risk maps by learning from historical disaster inventories and conditioning factors (topography, land use, rainfall).
-    \item \textbf{Response:} Real-time or near-real-time applications dominate. Computer vision models analyze social media images or live drone footage to locate stranded individuals or assess infrastructure damage. Natural Language Processing (NLP) mines text from reports and social media for situational awareness.
-    \item \textbf{Recovery:} Deep learning, particularly CNNs and semantic segmentation models (e.g., U-Net), are employed to compare pre- and post-disaster satellite/aerial imagery to quantify damage to buildings, roads, and vegetation at scale.
-\end{itemize}
-The literature also identifies common challenges: the need for large, labeled datasets for training; the "black-box" nature of complex models hindering trust from decision-makers; and difficulties in model generalization across different geographical regions.
-
-\section{Research Methodology}
-This research will employ a \textbf{Design Science Research (DSR)} methodology, which focuses on the creation and evaluation of innovative artifacts (in this case, the Geo-AI framework and models) to solve identified problems.
-\begin{enumerate}
-    \item \textbf{Problem Identification \& Motivation:} Already established through the background and literature review, defining the gaps in current disaster management practices.
-    \item \textbf{Objectives Definition:} Stated in Section 3, outlining what a solution should achieve.
-    \item \textbf{Design \& Development:}
-    \begin{itemize}
-        \item \textbf{Data Acquisition:} Collect open-source datasets: Sentinel-2 satellite imagery, SRTM DEM, historical flood/earthquake records from relevant agencies (e.g., USGS, GDACS), and relevant social media datasets (e.g., Twitter with geotags).
-        \item \textbf{System Design:} Create a conceptual and high-level technical architecture for the Geo-AI framework, detailing data flow, processing modules (data ingestion, AI model server, GIS visualization), and integration points.
-        \item \textbf{Model Development:} Using Python, develop two core prototypes: (i) A flood susceptibility model using a Random Forest classifier with features like elevation, slope, distance to river, and land use. (ii) A building damage classifier using a pre-trained CNN (e.g., ResNet) on pairs of satellite images.
-    \end{itemize}
-    \item \textbf{Demonstration \& Evaluation:}
-    \begin{itemize}
-        \item Test the flood model on a known historical event (e.g., a past flood in a selected region) and evaluate using standard metrics (Precision, Recall, F1-Score, AUC-ROC).
-        \item Test the damage assessment model on available benchmark datasets (e.g., xView2) and compute accuracy and IoU (Intersection over Union) scores.
-        \item Conduct a qualitative evaluation through expert interviews with disaster management professionals to assess the framework's practicality and potential integration challenges.
-    \end{itemize}
-    \item \textbf{Communication:} Document the entire process, findings, and proposed framework in the final research report and subsequent academic publications.
-\end{enumerate}
+\section{Training configuration}
+lr = $5e-4$ \\
+phase\_1\_epochs = 100 \\
+prithvi\_out\_channels = 768 \\
+prithvi\_out\_channels = 768 \\
+phase\_2 lr = $lr \times 0.1$ \\
+finetune\_ratio = 1 \\
+u\_prithvi\_dropout\_prob = 2/3 (66\%) \\
+phase\_2\_epochs = $phase\_1\_epochs \times finetune\_ratio$
 
 \newpage
 
@@ -239,17 +330,6 @@ This research will employ a \textbf{Design Science Research (DSR)} methodology, 
 % REFERENCES
 % ============================================
 \begin{thebibliography}{99}
-\bibitem{2} Goodchild, M. F. (2007). Citizens as sensors: The world of volunteered geography. GeoJournal, 69(4), 211-221.
-
-\bibitem{3} Li, S., Dragicevic, S., Castro, F. A., Sester, M., Winter, S., Coltekin, A., ... \& Cheng, T. (2016). Geospatial big data handling theory and methods: A review and research challenges. ISPRS Journal of Photogrammetry and Remote Sensing, 115, 119-133.
-
-\bibitem{4} Janowicz, K., Gao, S., McKenzie, G., Hu, Y., \& Bhaduri, B. (2020). GeoAI: spatially explicit artificial intelligence techniques for geographic knowledge discovery and beyond. International Journal of Geographical Information Science, 34(4), 625-636.
-
-\bibitem{5} Cutter, S. L. (2003). GI science, disasters, and emergency management. Transactions in GIS, 7(4), 439-446.
-
-\bibitem{6} Johnson, B. A., Iizuka, K., \& Bragais, M. A. (2020). Artificial intelligence for disaster risk reduction: Opportunities, challenges, and prospects. International Journal of Disaster Risk Reduction, 51, 101833.
-
-\bibitem{7} Voigt, S., Giulio-Tonolo, F., Lyons, J., Kučera, J., Jones, B., Schneiderhan, T., ... \& Guha-Sapir, D. (2016). Global trends in satellite-based emergency mapping. Science, 353(6296), 247-252.
 
 \end{thebibliography}
 

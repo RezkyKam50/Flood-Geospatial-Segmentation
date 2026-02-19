@@ -2,15 +2,15 @@ from collections import OrderedDict
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
-from models.prithvi_segmenter import PritviSegmenter
+from models.prithvi_unet import PrithviUNet
 
-#  Triple Stream Classical UNet 
+# Dual Stream Classical UNet
 
 # Reference from DS_Unet https://github.com/SebastianHafner/DS_UNet/blob/master/utils/networks.py
-class HydraUNet(nn.Module):
+class DSUNet_Base(nn.Module):
 
     def __init__(self, cfg, use_prithvi=None):
-        super(HydraUNet, self).__init__()
+        super(DSUNet_Base, self).__init__()
         assert (cfg.DATASET.MODE == 'fusion')
         self._cfg = cfg
         out = cfg.MODEL.OUT_CHANNELS
@@ -28,25 +28,20 @@ class HydraUNet(nn.Module):
         self.s2_stream = UNet(cfg, n_channels=s2_in, n_classes=out, topology=topology, enable_outc=False)
         self.n_s2_bands = n_s2_bands
 
-        # elevation unet stream
-        n_dem_bands = len(cfg.DATASET.DEM_BANDS)  
-        dem_in = n_dem_bands  
-        self.dem_stream = UNet(cfg, n_channels=dem_in, n_classes=out, topology=topology, enable_outc=False)
-        self.n_dem_bands = n_dem_bands
-
+ 
         # out block combining unet outputs
         self.use_prithvi = use_prithvi
             # prithvi
         if self.use_prithvi:
-            self.prithvi = PritviSegmenter(
+            self.prithvi = PrithviUNet(
+                in_channels=n_s2_bands,
+                out_channels=out,
                 weights_path=cfg.MODEL.PRITHVI_PATH,
-                device="cuda" if torch.cuda.is_available() else "cpu",
-                prithvi_encoder_size=cfg.MODEL.TOPOLOGY[-1],
-                output_channels=out
-            ) # prithvi encoder 
-            out_dim = 3 * cfg.MODEL.TOPOLOGY[0] + 2 # N channels x Topo First idx 
+                device="cuda" if torch.cuda.is_available() else "cpu"
+            ) # prithvi encoder + unet segmentation decoder
+            out_dim = 2 * cfg.MODEL.TOPOLOGY[0] + 2 # N channels x Topo First idx 
         else:
-            out_dim = 3 * cfg.MODEL.TOPOLOGY[0] # N channels x Topo First idx 
+            out_dim = 2 * cfg.MODEL.TOPOLOGY[0] # N channels x Topo First idx 
 
         self.out_conv = OutConv(out_dim, out)
 
@@ -54,20 +49,21 @@ class HydraUNet(nn.Module):
         if self.use_prithvi:
             self.prithvi.change_prithvi_trainability(trainable)
 
-    def forward(self, s1_img, s2_img, dem_img):
-        '''Late fusion scheme'''
+    def forward(self, s1_img, s2_img, dem_img): # pass dem modality for train loop compatiblity
+
+        del dem_img
+
         s1_feature = self.s1_stream(s1_img)
         s2_feature = self.s2_stream(s2_img)
-        dem_feature = self.dem_stream(dem_img)
-
+ 
         if self.use_prithvi:
             prithvi_features = self.prithvi(s2_img)
-            fusion = torch.cat((s1_feature, s2_feature, dem_feature, prithvi_features), dim=1) # 3 ch + 2 ch prithvi
+            fusion = torch.cat((s1_feature, s2_feature, prithvi_features), dim=1) # 2 ch + 2 ch prithvi
         else:
-            fusion = torch.cat((s1_feature, s2_feature, dem_feature), dim=1) # 3 ch
+            fusion = torch.cat((s1_feature, s2_feature), dim=1) # 2 ch
 
-        out = self.out_conv(fusion)  
-        return out    
+        out = self.out_conv(fusion)
+        return out
 
 
 

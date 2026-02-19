@@ -13,7 +13,7 @@ import torch.nn.functional as F
 
 from models.blocks import DownBlock, UpBlockWithSkip, Block
 
- 
+
 
 class UNet(nn.Module):
     def __init__(self, in_channels, out_channels, unet_encoder_size=None):
@@ -57,9 +57,11 @@ class UNet(nn.Module):
  
         return x
 
-    def forward(self, x): # pass other modality for train loop compatiblity
- 
-        x = self.forward_features(x)
+    def forward(self, s1_img, s2_img, dem_img): # pass other modality for train loop compatiblity
+
+        del s1_img
+        del dem_img
+        x = self.forward_features(s2_img)
         x = self.out(x)
         return x
     
@@ -87,11 +89,5 @@ def ConvBlock(in_channels, out_channels, kernel_size=(3, 3), stride=(1, 1), padd
         
     return nn.Sequential(*layers)
 
-def dot_product(seg, cls):
-    b, n, h, w = seg.shape
-    seg = seg.view(b, n, -1)
-    cls = cls.unsqueeze(-1)  # Add an extra dimension for broadcasting
-    final = torch.einsum("bik,bi->bik", seg, cls)
-    final = final.view(b, n, h, w)
-    return final
+
 

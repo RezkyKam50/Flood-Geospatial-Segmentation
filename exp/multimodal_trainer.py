@@ -1,8 +1,8 @@
-import argparse
 import torch
 import torch.nn as nn
-import torch.linalg as LA
 
+from models.hydraunet.UNet import UNet
+from models.hydraunet.DSUnet_Base import DSUNet_Base
 from models.hydraunet.DSUnet import DSUNet          # Dual Modality Classical UNet
 from models.hydraunet.DSUnetTP import DSUNet3P      # Dual Modality UNet3+
 
@@ -17,26 +17,36 @@ from models.hydraunet.config import (
     Config_HydraUnet3P # Triple Stream | S1, S2, DEM (UNet3+)
 )
 
+
 import os
 from tqdm import tqdm
 from datetime import datetime
 from loguru import logger
-from torch.utils.tensorboard import SummaryWriter
+import random
+import numpy as np
 from enum import Enum
-from utils.testing import computeIOU, computeAccuracy, computeMetrics
+import argparse
+import json
+
+from torch.utils.tensorboard import SummaryWriter
+
+from utils.testing import (
+    computeIOU, 
+    computeAccuracy, 
+    computeMetrics
+)
 
 from utils.tversky import TverskyLoss
 from utils.customloss import DiceLoss, DiceLoss2 
+from data_loading.sen1_multimodal import get_loader_MM
 from segmentation_models_pytorch.losses import FocalLoss, LovaszLoss 
 
-from lion_pytorch import Lion
+from torch.amp import autocast, GradScaler
 
+from optimizers.evolved_sign_momentum import Lion
+from optimizers.soap import SOAP
+from optimizers.muon import MuonWithAuxAdam
 
-from data_loading.sen1_multimodal import get_loader_MM
- 
-import json
-
-torch.manual_seed(124)
 
 class DatasetType(Enum):
     TRAIN = 'train'
@@ -51,11 +61,12 @@ def parse_arguments():
     parser.add_argument('--batch_size', type=int, default=4, help='Batch size for training.')
     parser.add_argument('--epochs', type=int, default=50, help='Number of training epochs.')
     parser.add_argument('--learning_rate', type=float, default=5e-4, help='Learning rate for the optimizer.')
-    parser.add_argument('--save_model_interval', type=int, default=5, help='Save the model every n epochs')
     parser.add_argument('--test_interval', type=int, default=1, help='Test the model every n epochs')
     parser.add_argument('--loss_func', type=str, default='bce', help='Loss function to use: bce, dice, dice2, focal, lovasz, tversky')
-    parser.add_argument('--prithvi_finetune_ratio', type=float, default=1, help='Fine-tune ratio for Prithvi models')
-    
+    parser.add_argument('--finetune_ratio', type=float, default=1, help='Fine-tune ratio for Prithvi models')
+    parser.add_argument('--torch_seed', type=int, default=124, help='Set random seed.')
+
+        
     
     return parser.parse_args()
 
@@ -65,47 +76,98 @@ def get_number_of_trainable_parameters(model):
 def get_total_parameters(model):
     return sum(p.numel() for p in model.parameters())
 
-def train_model(model, loader, optimizer, criterion, epoch, device):
- 
+
+def is_boundary_conv(name):
+    return any(k in name for k in ["inc.", "outc.", "out_conv.", "up_seq"])  # inc=input, outc/out_conv=output, ConvTranspose in up_seq
+
+
+def get_muon_target_params(model, model_name):
+
+    if model_name == "DSUnet":
+        hidden_matrix_params = [
+            p for n, p in model.named_parameters()
+            if p.ndim >= 2
+            and not is_boundary_conv(n)
+            and "bn" not in n and "norm" not in n
+        ]
+        scalar_params = [p for p in model.parameters() if p.ndim < 2]
+        head_params = [
+            p for n, p in model.named_parameters()
+            if is_boundary_conv(n) and p.ndim >= 2
+        ]
+        adam_groups = [
+            dict(params=head_params, lr=0.001),
+            dict(params=scalar_params, lr=0.0001),
+        ]
+        adam_groups = [dict(**g, betas=(0.9, 0.95), eps=1e-8, use_muon=False) for g in adam_groups]
+        muon_group = dict(params=hidden_matrix_params, lr=0.02, momentum=0.95, use_muon=True)
+
+    return [*adam_groups, muon_group]
+
+
+def compute_gradnorm(model, running_grad_norm):
+    total_norm = 0.0
+    for p in model.parameters():
+        if p.grad is not None:
+            param_norm = p.grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** 0.5
+    running_grad_norm += total_norm
+
+    return total_norm
+
+def train_model(model, loader, optimizer, criterion, epoch, device, accumulation_steps=2, writer=None):
     model.train()
     running_loss = 0.0
     running_samples = 0
     running_accuracies = 0
     running_iou = 0
+    running_grad_norm = 0.0  
+    
+    optimizer.zero_grad()   
     
     for batch_idx, batch_data in enumerate(tqdm(loader, desc=f"Training Epoch {epoch+1}"), 0):
-
         sar_imgs, optical_imgs, elevation_imgs, masks, water_occur = batch_data
-        
-        # Send to device
+         
         sar_imgs = sar_imgs.to(device)
         optical_imgs = optical_imgs.to(device)
         elevation_imgs = elevation_imgs.to(device)
         masks = masks.to(device)
-        
-        # Pass different modalities to different streams
-        outputs = model(sar_imgs, optical_imgs, elevation_imgs)  
-        targets = masks.squeeze(1) if len(masks.shape) > 3 else masks
-
-        loss = criterion(outputs, targets.long())
- 
+         
+        with autocast(device_type="cuda", dtype=torch.bfloat16):
+            outputs = model(sar_imgs, optical_imgs, elevation_imgs)   # s1, s2, dem
+            targets = masks.squeeze(1) if len(masks.shape) > 3 else masks
+            loss = criterion(outputs, targets.long()) / accumulation_steps
+            
         loss.backward()
-        
-        iou = computeIOU(outputs, targets, device)
-        accuracy = computeAccuracy(outputs, targets, device)
-        
-        optimizer.step()
-    
+         
+        iou = computeIOU(outputs.float(), targets, device)
+        accuracy = computeAccuracy(outputs.float(), targets, device)
+         
+        if (batch_idx + 1) % accumulation_steps == 0:
+            optimizer.step()
+            optimizer.zero_grad()  
+             
+            if (batch_idx + 1) % (accumulation_steps * 10) == 0:  
+                print(f"  Batch {batch_idx+1}/{len(loader)}: Loss={loss.item()*accumulation_steps:.4f}, GradNorm={compute_gradnorm(model, running_grad_norm):.4f}")
+         
         running_samples += targets.size(0)
-        running_loss += loss.item()
+        running_loss += loss.item() * accumulation_steps  
         running_accuracies += accuracy
         running_iou += iou
+    
+    if len(loader) % accumulation_steps != 0:
+        optimizer.step()
+        optimizer.zero_grad()
     
     avg_loss = running_loss / (batch_idx + 1)
     avg_acc = running_accuracies / (batch_idx + 1)
     avg_iou = running_iou / (batch_idx + 1)
+    avg_grad_norm = running_grad_norm / (batch_idx + 1)
+     
+    writer.add_scalar("GradNorm/train", avg_grad_norm, epoch)
     
-    return avg_loss, avg_acc, avg_iou
+    return avg_loss, avg_acc, avg_iou 
 
 def test(model, loader, criterion, device):
     model.eval()
@@ -126,8 +188,8 @@ def test(model, loader, criterion, device):
             # Pass different modalities to different streams
             predictions = model(sar_imgs, optical_imgs, elevation_imgs)
 
-
-            loss = criterion(predictions, masks.squeeze(1) if len(masks.shape) > 3 else masks)
+            targets = masks.squeeze(1).long() if len(masks.shape) > 3 else masks.long()
+            loss = criterion(predictions, targets)
             
             metrics = computeMetrics(predictions, masks, device, criterion)
             metricss = {k: metricss.get(k, 0) + v for k, v in metrics.items()}
@@ -154,16 +216,15 @@ def test(model, loader, criterion, device):
         'Loss': loss / index
     }
 
-def ph1_loop(model, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args):
+def ph_loop(model, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args):
     
-
-    num_params_phase_1 = get_number_of_trainable_parameters(model)
+    num_params_phase_n = get_number_of_trainable_parameters(model)
 
     for epoch in range(args.epochs):
         logger.info(f"\nEpoch {epoch+1}/{args.epochs}")
         
         train_loss, train_acc, train_iou = train_model(
-            model, train_loader, optimizer, criterion, epoch, device
+            model, train_loader, optimizer, criterion, epoch, device, writer=writer
         )
         logger.info(f"Train - Loss: {train_loss:.4f}, Accuracy: {train_acc:.4f}, IoU: {train_iou:.4f}")
         
@@ -179,14 +240,14 @@ def ph1_loop(model, train_loader, valid_loader, criterion, device, writer, sched
             
             for metric_name, metric_value in val_metrics.items():
                 writer.add_scalar(f"{metric_name}/valid", metric_value, epoch)
-    return num_params_phase_1
+    return num_params_phase_n
 
-def ph2_loop(model, model_name, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args):
+def ft_loop(model, model_name, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args):
         logger.info(f"\nFine-tuning {model_name}")
 
-        num_params_phase_2 = get_number_of_trainable_parameters(model)
+        num_params_phase_ft = get_number_of_trainable_parameters(model)
         
-        finetune_epochs = int(args.epochs * args.prithvi_finetune_ratio)
+        finetune_epochs = int(args.epochs * args.finetune_ratio)
         
         finetune_lr = args.learning_rate * 0.1
         optimizer = torch.optim.AdamW(model.parameters(), lr=finetune_lr)
@@ -195,7 +256,7 @@ def ph2_loop(model, model_name, train_loader, valid_loader, criterion, device, w
         for epoch in range(args.epochs, args.epochs + finetune_epochs):
             logger.info(f"\n{model_name} - Fine-tune Epoch {epoch+1}/{args.epochs + finetune_epochs}")
              
-            train_loss, train_acc, train_iou = train_model(model, train_loader, optimizer, criterion, epoch, device)
+            train_loss, train_acc, train_iou = train_model(model, train_loader, optimizer, criterion, epoch, device, writer=writer)
             logger.info(f"Train - Loss: {train_loss:.4f}, Accuracy: {train_acc:.4f}, IoU: {train_iou:.4f}")
             
             writer.add_scalar("Loss/train", train_loss, epoch)
@@ -211,7 +272,7 @@ def ph2_loop(model, model_name, train_loader, valid_loader, criterion, device, w
                 for metric_name, metric_value in val_metrics.items():
                     writer.add_scalar(f"{metric_name}/valid", metric_value, epoch)
 
-        return num_params_phase_2
+        return num_params_phase_ft
 
 def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_loader, 
                                    args, device, base_log_dir):    
@@ -222,6 +283,7 @@ def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_lo
 
     num_params_phase_1 = "N/A"
     num_params_phase_2 = "N/A"
+    num_params_phase_ft = "N/A"
 
     writer = SummaryWriter(model_log_dir)
     
@@ -229,9 +291,12 @@ def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_lo
     num_params_total = get_total_parameters(model)
     logger.info(f"{model_name}| Total Params: {num_params_total}")
 
-    
+
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     # optimizer = Lion(model.parameters(), lr=args.learning_rate)
+    # optimizer = MuonWithAuxAdam(get_muon_target_params(model, model_name))
+
+
 
     if args.loss_func == 'diceloss':
         criterion = DiceLoss(device=device)
@@ -248,41 +313,43 @@ def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_lo
 
     scheduler = torch.optim.lr_scheduler.PolynomialLR(optimizer, args.epochs)
      
-    # for epoch in range(args.epochs):
-    #     logger.info(f"\nEpoch {epoch+1}/{args.epochs}")
-        
-    #     train_loss, train_acc, train_iou = train_model(
-    #         model, train_loader, optimizer, criterion, epoch, device
-    #     )
-    #     logger.info(f"Train - Loss: {train_loss:.4f}, Accuracy: {train_acc:.4f}, IoU: {train_iou:.4f}")
-        
-    #     writer.add_scalar("Loss/train", train_loss, epoch)
-    #     writer.add_scalar("Accuracy/train", train_acc, epoch)
-    #     writer.add_scalar("IoU/train", train_iou, epoch)
-        
-    #     scheduler.step()
-        
-    #     if (epoch + 1) % args.test_interval == 0:
-    #         val_metrics = test(model, valid_loader, criterion, device)
-    #         logger.info(f"Valid - Avg IOU: {val_metrics['Avg_IOU']:.4f}, Avg ACC: {val_metrics['Avg_ACC']:.4f}, Loss: {val_metrics['Loss']:.4f}")
-            
-    #         for metric_name, metric_value in val_metrics.items():
-    #             writer.add_scalar(f"{metric_name}/valid", metric_value, epoch)
-
-
     attention_based_model = ['DSUNet_Prithvi','DSUNet3P_Prithvi','HydraUNet_Prithvi','HydraUNet3P_Prithvi']
-    if model_name in attention_based_model and args.prithvi_finetune_ratio is not None:
+    three_phase_model = ['DSUNet_EarlyFS', 'DSUNet_MiddleFS', 'DSUNet_LateFS']
+
+    if model_name in attention_based_model and args.finetune_ratio is not None:
         model.change_prithvi_trainability(False)
         logger.info(f"Prithvi weights frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
 
-    num_params_phase_1 = ph1_loop(model, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
+    # Full Phase 1
+    if model_name in three_phase_model and args.finetune_ratio is not None:
+        model.change_s1_trainability(True) # Freeze S2, update S1
+        model.change_s2_trainability(True) # Freeze S2, update S1
+        # logger.info(f"Module S2 frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+
+    num_params_phase_1 = ph_loop(model, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
+    torch.cuda.empty_cache()
+
+    # # Full Phase 2
+    # if model_name in three_phase_model and args.finetune_ratio is not None:
+    #     model.change_s1_trainability(False) # Freeze S1, train S2
+    #     model.change_s2_trainability(True)
+    #     logger.info(f"Module S1 frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+    # num_params_phase_2 = ph_loop(model, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
+    # torch.cuda.empty_cache()
+
+    # # FT Phase 3
+    # if model_name in three_phase_model and args.finetune_ratio is not None:
+    #     model.change_s1_trainability(True)
+    #     logger.info(f"All weights unfrozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+    #     num_params_phase_ft = ft_loop(model, model_name, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
 
 
-    if model_name in attention_based_model and args.prithvi_finetune_ratio is not None:
-        model.change_prithvi_trainability(True)
-        logger.info(f"Prithvi weights unfrozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
 
-        num_params_phase_2 = ph2_loop(model, model_name, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
+    # FT Phase Prithvi
+    # if model_name in attention_based_model and args.finetune_ratio is not None:
+    #     model.change_prithvi_trainability(True)
+    #     logger.info(f"Prithvi weights unfrozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+    #     num_params_phase_ft = ft_loop(model, model_name, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
     
     logger.info(f"\nFinal Evaluation")
     
@@ -302,6 +369,7 @@ def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_lo
         'num_total_params': num_params_total,
         'params_phase_1': num_params_phase_1,
         'params_phase_2': num_params_phase_2,
+        'params_pahse_ft': num_params_phase_ft,
         'test_metrics': test_metrics,
         'bolivia_metrics': bolivia_metrics
     }
@@ -316,6 +384,12 @@ def main(args):
     os.makedirs(base_log_dir, exist_ok=True)
     
     logger.info("Loading datasets...")
+
+    random.seed(args.torch_seed)
+    torch.manual_seed(args.torch_seed)
+    np.random.seed(args.torch_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
   
     train_loader = get_loader_MM(args.data_path, DatasetType.TRAIN.value, args)
     valid_loader = get_loader_MM(args.data_path, DatasetType.VALID.value, args)
@@ -323,44 +397,69 @@ def main(args):
     bolivia_loader = get_loader_MM(args.data_path, DatasetType.BOLIVIA.value, args)
  
     models = {
-        'DSUNet': DSUNet(
+        # 'UNet': UNet(
+        #     in_channels=Config_DSUnet.MODEL.IN_CHANNELS - 2, # -2 since no S1 data
+        #     out_channels=Config_DSUnet.MODEL.OUT_CHANNELS, 
+        #     unet_encoder_size=768
+        # ),
+
+        'DSUNet_EarlyFS': DSUNet(
+            cfg=Config_DSUnet,
+            use_prithvi=False,
+            fusion_scheme="early",
+            bottleneck_dropout_prob=0
+        ),
+        'DSUNet_MiddleFS': DSUNet(
+            cfg=Config_DSUnet,
+            use_prithvi=False,
+            fusion_scheme="middle",
+            bottleneck_dropout_prob=0
+        ),
+        'DSUNet_LateFS': DSUNet(
+            cfg=Config_DSUnet,
+            use_prithvi=False,
+            fusion_scheme="late",
+            bottleneck_dropout_prob=0
+        ),
+        'DSUnet_Base': DSUNet_Base(
             cfg=Config_DSUnet,
             use_prithvi=False
-        ),
-        'DSUNet_Prithvi': DSUNet(
-            cfg=Config_DSUnet,
-            use_prithvi=True
-        ),
-
-
-        'DSUNet3P': DSUNet3P(
-            cfg=Config_DSUnet3P,
-            use_prithvi=False
-        ),
-        'DSUNet3P_Prithvi': DSUNet3P(
-            cfg=Config_DSUnet3P,
-            use_prithvi=True
-        ),
-
-
-        'HydraUNet': HydraUNet(
-            cfg=Config_HydraUNet,
-            use_prithvi=False
-        ),
-        'HydraUNet_Prithvi': HydraUNet(
-            cfg=Config_HydraUNet,
-            use_prithvi=True
-        ),
-
-
-        'HydraUNet3P': HydraUNet3P(
-            cfg=Config_HydraUnet3P,
-            use_prithvi=False
-        ),
-        'HydraUNet3P_Prithvi': HydraUNet3P(
-            cfg=Config_HydraUnet3P,
-            use_prithvi=True
         )
+        # 'DSUNet_Prithvi': DSUNet(
+        #     cfg=Config_DSUnet,
+        #     use_prithvi=True
+        # ),
+
+
+        # 'DSUNet3P': DSUNet3P(
+        #     cfg=Config_DSUnet3P,
+        #     use_prithvi=False
+        # ),
+        # 'DSUNet3P_Prithvi': DSUNet3P(
+        #     cfg=Config_DSUnet3P,
+        #     use_prithvi=True
+        # ),
+
+
+        # 'HydraUNet': HydraUNet(
+        #     cfg=Config_HydraUNet,
+        #     use_prithvi=False
+        # ),
+        # 'HydraUNet_Prithvi': HydraUNet(
+        #     cfg=Config_HydraUNet,
+        #     use_prithvi=True
+        # ),
+
+
+        # 'HydraUNet3P': HydraUNet3P(
+        #     cfg=Config_HydraUnet3P,
+        #     use_hydrafq=True,
+        #     use_prithvi=False
+        # ),
+        # 'HydraUNet3P_Prithvi': HydraUNet3P(
+        #     cfg=Config_HydraUnet3P,
+        #     use_prithvi=True
+        # )
     }
 
      
@@ -371,9 +470,10 @@ def main(args):
             model, model_name, train_loader, valid_loader, test_loader, bolivia_loader, 
             args, device, base_log_dir
         )
+        torch.cuda.empty_cache()
+        del model
         results.append(result)
-    del model
-    torch.cuda.empty_cache()
+    
 
     results_file = os.path.join(base_log_dir, f'multimodal_e{args.epochs}_{args.loss_func}.json')
     with open(results_file, 'w') as f:

@@ -53,8 +53,7 @@ class PrithviUNet(nn.Module):
         for param in self.prithvi_encoder.prithvi.parameters():
             param.requires_grad = trainable
         
-    def forward(self, x):
-        # Encoder
+    def forward_features(self, x):
         x1 = self.down1(x)
         x2 = self.down2(x1)
         x3 = self.down3(x2)
@@ -62,17 +61,20 @@ class PrithviUNet(nn.Module):
         x_bottleneck = self.down4(x3)
         x_prithvi = self.prithvi_encoder(x)
         x = self.combine(x_bottleneck, x_prithvi)
-
-        # mask on part to make training more robust
+ 
         x = self.random_half_dropout(x)
-        
-        # Decoder
+         
         x = self.up1(x)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
+ 
+        return x
         
-        x = self.out(x)
+    def forward(self, x):
+ 
+        x = self.forward_features(x)
+        x = self.out(x)   
         return x
     
 
