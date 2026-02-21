@@ -2,90 +2,61 @@ from collections import OrderedDict
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
-from models.prithvi_unet import PrithviUNet
+from models.hydraunet.PRCNPTN import PRCNPTNLayer
+from models.hydraunet.Attention import CBAM
 
 # Dual Stream Classical UNet
 
 # Reference from DS_Unet https://github.com/SebastianHafner/DS_UNet/blob/master/utils/networks.py
-class DSUNet_Base(nn.Module):
-
-    def __init__(self, cfg, use_prithvi=None):
-        super(DSUNet_Base, self).__init__()
+class DSUNet_PRC(nn.Module):
+    def __init__(self, cfg):
+        super(DSUNet_PRC, self).__init__()
         assert (cfg.DATASET.MODE == 'fusion')
         self._cfg = cfg
         out = cfg.MODEL.OUT_CHANNELS
         topology = cfg.MODEL.TOPOLOGY
 
-        # sentinel-1 unet stream
+        self.CBAM_S1 = CBAM(topology[0])
+        self.CBAM_S2 = CBAM(topology[0])
+
         n_s1_bands = len(cfg.DATASET.SENTINEL1_BANDS)
-        s1_in = n_s1_bands + 2
-        self.s1_stream = UNet(cfg, n_channels=s1_in, n_classes=out, topology=topology, enable_outc=False)
-        self.n_s1_bands = n_s1_bands
-
-        # sentinel-2 unet stream
         n_s2_bands = len(cfg.DATASET.SENTINEL2_BANDS)
-        s2_in = n_s2_bands  
-        self.s2_stream = UNet(cfg, n_channels=s2_in, n_classes=out, topology=topology, enable_outc=False)
+        self.n_s1_bands = n_s1_bands
         self.n_s2_bands = n_s2_bands
-
  
-        # out block combining unet outputs
-        self.use_prithvi = use_prithvi
-            # prithvi
-        if self.use_prithvi:
-            self.prithvi = PrithviUNet(
-                in_channels=n_s2_bands,
-                out_channels=out,
-                weights_path=cfg.MODEL.PRITHVI_PATH,
-                device="cuda" if torch.cuda.is_available() else "cpu"
-            ) # prithvi encoder + unet segmentation decoder
-            out_dim = 2 * cfg.MODEL.TOPOLOGY[0] + 2 # N channels x Topo First idx 
-        else:
-            out_dim = 2 * cfg.MODEL.TOPOLOGY[0] # N channels x Topo First idx 
 
-        self.out_conv = OutConv(out_dim, out)
+        self.s1_stream = UNet(cfg, n_channels=n_s1_bands, n_classes=out,
+                                topology=topology, enable_outc=False)
+        self.s2_stream = UNet(cfg, n_channels=n_s2_bands, n_classes=out,
+                                topology=topology, enable_outc=False,)
+         
+        self.out_conv = OutConv(2 * topology[0], out)
 
     def change_prithvi_trainability(self, trainable):
         if self.use_prithvi:
             self.prithvi.change_prithvi_trainability(trainable)
 
-    # def forward(self, s1_img, s2_img, dem_img, water_occur): # pass dem modality for train loop compatiblity
+    def forward(self, s1_img, s2_img, dem_img): # pass dem modality for train loop compatiblity
 
-    #     del water_occur # 6, 224, 224
-    #     del dem_img # 6, 1, 224, 224
+        del dem_img
 
-    #     s1_feature = self.s1_stream(s1_img)
-    #     s2_feature = self.s2_stream(s2_img)
- 
-    #     if self.use_prithvi:
-    #         prithvi_features = self.prithvi(s2_img)
-    #         fusion = torch.cat((s1_feature, s2_feature, prithvi_features), dim=1) # 2 ch + 2 ch prithvi
-    #     else:
-    #         fusion = torch.cat((s1_feature, s2_feature), dim=1) # 2 ch
-
-    #     out = self.out_conv(fusion)
-    #     return out
-
-
-    def forward(self, s1_img, s2_img, dem_img, water_occur):
-        # Merge DEM and water occurrence into S1 stream
-        s1_with_aux = torch.cat([s1_img, dem_img, water_occur.unsqueeze(1)], dim=1)  # [B, 4, H, W]
         
-        s1_feature = self.s1_stream(s1_with_aux)
+        s1_feature = self.s1_stream(s1_img)
         s2_feature = self.s2_stream(s2_img)
 
-        if self.use_prithvi:
-            prithvi_features = self.prithvi(s2_img)
-            fusion = torch.cat((s1_feature, s2_feature, prithvi_features), dim=1)
-        else:
-            fusion = torch.cat((s1_feature, s2_feature), dim=1)
+        # s1_feature = self.CBAM_S1(s1_feature)
+        # s2_feature = self.CBAM_S1(s2_feature)
 
-        out = self.out_conv(fusion)
-        return out
+
+        fusion = torch.cat((s1_feature, s2_feature), dim=1)
+        return self.out_conv(fusion)
+
 
 
 class UNet(nn.Module):
-    def __init__(self, cfg, n_channels=None, n_classes=None, topology=None, enable_outc=True):
+
+    def __init__(self, cfg, n_channels=None, n_classes=None, topology=None,
+                 enable_outc=True, combine_method=None):
 
         self._cfg = cfg
 
@@ -99,22 +70,21 @@ class UNet(nn.Module):
         self.inc = InConv(n_channels, first_chan, DoubleConv)
         self.enable_outc = enable_outc
         self.outc = OutConv(first_chan, n_classes)
-
+ 
         # Variable scale
         down_topo = topology
         down_dict = OrderedDict()
         n_layers = len(down_topo)
-        up_topo = [first_chan]  # topography upwards
+        up_topo = [first_chan]
         up_dict = OrderedDict()
 
         # Downward layers
         for idx in range(n_layers):
             is_not_last_layer = idx != n_layers - 1
             in_dim = down_topo[idx]
-            out_dim = down_topo[idx + 1] if is_not_last_layer else down_topo[idx]  # last layer
+            out_dim = down_topo[idx + 1] if is_not_last_layer else down_topo[idx]
 
             layer = Down(in_dim, out_dim, DoubleConv)
-
             print(f'down{idx + 1}: in {in_dim}, out {out_dim}')
             down_dict[f'down{idx + 1}'] = layer
             up_topo.append(out_dim)
@@ -129,11 +99,41 @@ class UNet(nn.Module):
             out_dim = up_topo[x2_idx]
 
             layer = Up(in_dim, out_dim, DoubleConv)
-
             print(f'up{idx + 1}: in {in_dim}, out {out_dim}')
             up_dict[f'up{idx + 1}'] = layer
 
         self.up_seq = nn.ModuleDict(up_dict)
+ 
+        self.combine_method = combine_method 
+        bottleneck_dim = topology[-1]
+        if combine_method == 'concat':
+            self.bottleneck_proj = nn.Conv2d(bottleneck_dim * 2, bottleneck_dim, kernel_size=1)
+        else:
+            self.bottleneck_proj = None
+ 
+
+    def encode(self, x):
+ 
+        x1 = self.inc(x)
+        inputs = [x1]
+        for idx, layer in enumerate(self.down_seq.values()):
+            out = layer(inputs[-1])
+            inputs.append(out)
+        return inputs
+
+    def decode(self, inputs):
+ 
+        inputs = list(inputs)  # avoid mutating caller's list
+ 
+
+        inputs.reverse()
+        x1 = inputs.pop(0)
+        for idx, layer in enumerate(self.up_seq.values()):
+            x2 = inputs[idx]
+            x1 = layer(x1, x2)
+
+        return self.outc(x1) if self.enable_outc else x1
+ 
 
     def forward(self, x1, x2=None, x3=None):
         if x2 is None and x3 is None:
@@ -141,46 +141,39 @@ class UNet(nn.Module):
         elif x3 is None:
             x = torch.cat((x1, x2), 1)
         else:
-            x = torch.cat((x1, x2, x3), 1)   
+            x = torch.cat((x1, x2, x3), 1)
 
-        x1 = self.inc(x)
-
-        inputs = [x1]
-        # Downward U:
-        for layer in self.down_seq.values():
-            out = layer(inputs[-1])
-            inputs.append(out)
-
-        # Upward U:
-        inputs.reverse()
-        x1 = inputs.pop(0)
-        for idx, layer in enumerate(self.up_seq.values()):
-            x2 = inputs[idx]
-            x1 = layer(x1, x2) 
-
-        out = self.outc(x1) if self.enable_outc else x1
-
-        return out
+        skips = self.encode(x)
+        return self.decode(skips)
 
 
 
 
 
 # sub-parts of the U-Net model
+ 
 class DoubleConv(nn.Module):
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, in_ch, out_ch, G=8, CMP=2):
         super(DoubleConv, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, 3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, 3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True)
+          
+        self.proj = nn.Conv2d(in_ch, out_ch, 1, bias=False)
+        self.bn_proj = nn.BatchNorm2d(out_ch)
+        
+        self.prc = PRCNPTNLayer(
+            inch=out_ch,    
+            outch=out_ch,
+            G=G,
+            CMP=CMP,
+            kernel_size=3,
+            padding=1
         )
+        self.bn2 = nn.BatchNorm2d(out_ch)
+        self.act2 = nn.ReLU(inplace=True)
 
     def forward(self, x):
-        x = self.conv(x)
+        x = self.bn_proj(self.proj(x))   # project in_ch -> out_ch
+        x = self.prc(x)
+        x = self.act2(self.bn2(x))
         return x
 
 
@@ -235,8 +228,15 @@ class Up(nn.Module):
 class OutConv(nn.Module):
     def __init__(self, in_ch, out_ch):
         super(OutConv, self).__init__()
-        self.conv = nn.Conv2d(in_ch, out_ch, 1)
+
+        self.projection = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, 1)
+        )
 
     def forward(self, x):
-        x = self.conv(x)
+        x = self.projection(x)
         return x
+    
+
+
+

@@ -3,14 +3,16 @@ import torch.nn.functional as F
 import torch
 import torch.nn as nn
 from models.prithvi_unet import PrithviUNet
+from models.hydraunet.GhostNet import GhostModule
+from models.hydraunet.Attention import CrossModalSqueezeExcite
 
 # Dual Stream Classical UNet
 
 # Reference from DS_Unet https://github.com/SebastianHafner/DS_UNet/blob/master/utils/networks.py
-class DSUNet_Base(nn.Module):
+class DSGhostUnet(nn.Module):
 
     def __init__(self, cfg, use_prithvi=None):
-        super(DSUNet_Base, self).__init__()
+        super(DSGhostUnet, self).__init__()
         assert (cfg.DATASET.MODE == 'fusion')
         self._cfg = cfg
         out = cfg.MODEL.OUT_CHANNELS
@@ -18,7 +20,7 @@ class DSUNet_Base(nn.Module):
 
         # sentinel-1 unet stream
         n_s1_bands = len(cfg.DATASET.SENTINEL1_BANDS)
-        s1_in = n_s1_bands + 2
+        s1_in = n_s1_bands 
         self.s1_stream = UNet(cfg, n_channels=s1_in, n_classes=out, topology=topology, enable_outc=False)
         self.n_s1_bands = n_s1_bands
 
@@ -28,7 +30,18 @@ class DSUNet_Base(nn.Module):
         self.s2_stream = UNet(cfg, n_channels=s2_in, n_classes=out, topology=topology, enable_outc=False)
         self.n_s2_bands = n_s2_bands
 
- 
+        # attention block
+        self.aux_se = CrossModalSqueezeExcite(
+            aux_chs=2,
+            s_chs=cfg.MODEL.TOPOLOGY[0]
+        )
+
+        self.s2_se = CrossModalSqueezeExcite(
+            aux_chs=cfg.MODEL.TOPOLOGY[0],  # s1 attended as aux
+            s_chs=cfg.MODEL.TOPOLOGY[0]
+        ) 
+
+
         # out block combining unet outputs
         self.use_prithvi = use_prithvi
             # prithvi
@@ -68,11 +81,13 @@ class DSUNet_Base(nn.Module):
 
 
     def forward(self, s1_img, s2_img, dem_img, water_occur):
-        # Merge DEM and water occurrence into S1 stream
-        s1_with_aux = torch.cat([s1_img, dem_img, water_occur.unsqueeze(1)], dim=1)  # [B, 4, H, W]
-        
-        s1_feature = self.s1_stream(s1_with_aux)
+        s1_feature = self.s1_stream(s1_img)
         s2_feature = self.s2_stream(s2_img)
+
+        # aux attention on S1 features
+        aux = torch.cat([dem_img, water_occur.unsqueeze(1)], dim=1)  # [B, 2, H, W]
+        s1_feature = self.aux_se(s1_feature, aux)                    # attended S1
+        s2_feature = self.s2_se(s2_feature, s1_feature)  
 
         if self.use_prithvi:
             prithvi_features = self.prithvi(s2_img)
@@ -163,25 +178,33 @@ class UNet(nn.Module):
         return out
 
 
-
-
-
 # sub-parts of the U-Net model
+# DoubleConv with GhostNet
 class DoubleConv(nn.Module):
-    def __init__(self, in_ch, out_ch):
+    def __init__(self, in_ch, out_ch, scheme="cnn"):
         super(DoubleConv, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_ch, out_ch, 3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_ch, out_ch, 3, padding=1),
-            nn.BatchNorm2d(out_ch),
-            nn.ReLU(inplace=True)
-        )
+
+        if scheme == "ghost":
+            self.conv = nn.Sequential(
+                GhostModule(in_ch, out_ch, kernel_size=1, ratio=2, relu=False),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+                GhostModule(out_ch, out_ch, kernel_size=1, ratio=2, relu=False),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True)
+            )
+        elif scheme == "cnn":
+            self.conv = nn.Sequential(
+                nn.Conv2d(in_ch, out_ch, 3, padding=1),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(out_ch, out_ch, 3, padding=1),
+                nn.BatchNorm2d(out_ch),
+                nn.ReLU(inplace=True)
+            )
 
     def forward(self, x):
-        x = self.conv(x)
-        return x
+        return self.conv(x)
 
 
 class InConv(nn.Module):

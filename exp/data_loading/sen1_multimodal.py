@@ -6,6 +6,7 @@ import os
 import numpy as np
 import rasterio
 
+
 class InMemoryDataset(torch.utils.data.Dataset):
     def __init__(self, data_list, preprocess_func):
         self.data_list = data_list

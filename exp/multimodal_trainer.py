@@ -8,7 +8,9 @@ from models.hydraunet.DSUnetTP import DSUNet3P      # Dual Modality UNet3+
 
 from models.hydraunet.HydraUnet import HydraUNet       # Triple Modality Classical UNet
 from models.hydraunet.HydraUnetTP import HydraUNet3P  # Triple Modality UNet3+
- 
+
+from models.hydraunet.PRCUNet import DSUNet_PRC
+from models.hydraunet.DSGhostUnet import DSGhostUnet
 
 from models.hydraunet.config import (
     Config_DSUnet, # Dual Stream | S1, S2 (Classic UNet),
@@ -45,8 +47,7 @@ from torch.amp import autocast, GradScaler
 
 from optimizers.evolved_sign_momentum import Lion
 from optimizers.soap import SOAP
-from optimizers.muon import MuonWithAuxAdam
-
+ 
 
 class DatasetType(Enum):
     TRAIN = 'train'
@@ -81,30 +82,6 @@ def is_boundary_conv(name):
     return any(k in name for k in ["inc.", "outc.", "out_conv.", "up_seq"])  # inc=input, outc/out_conv=output, ConvTranspose in up_seq
 
 
-def get_muon_target_params(model, model_name):
-
-    if model_name == "DSUnet":
-        hidden_matrix_params = [
-            p for n, p in model.named_parameters()
-            if p.ndim >= 2
-            and not is_boundary_conv(n)
-            and "bn" not in n and "norm" not in n
-        ]
-        scalar_params = [p for p in model.parameters() if p.ndim < 2]
-        head_params = [
-            p for n, p in model.named_parameters()
-            if is_boundary_conv(n) and p.ndim >= 2
-        ]
-        adam_groups = [
-            dict(params=head_params, lr=0.001),
-            dict(params=scalar_params, lr=0.0001),
-        ]
-        adam_groups = [dict(**g, betas=(0.9, 0.95), eps=1e-8, use_muon=False) for g in adam_groups]
-        muon_group = dict(params=hidden_matrix_params, lr=0.02, momentum=0.95, use_muon=True)
-
-    return [*adam_groups, muon_group]
-
-
 def compute_gradnorm(model, running_grad_norm):
     total_norm = 0.0
     for p in model.parameters():
@@ -128,14 +105,16 @@ def train_model(model, loader, optimizer, criterion, epoch, device, accumulation
     
     for batch_idx, batch_data in enumerate(tqdm(loader, desc=f"Training Epoch {epoch+1}"), 0):
         sar_imgs, optical_imgs, elevation_imgs, masks, water_occur = batch_data
-         
-        sar_imgs = sar_imgs.to(device)
-        optical_imgs = optical_imgs.to(device)
-        elevation_imgs = elevation_imgs.to(device)
-        masks = masks.to(device)
-         
+ 
+        sar_imgs = sar_imgs.to(device, non_blocking=True)
+        optical_imgs = optical_imgs.to(device, non_blocking=True)
+        elevation_imgs = elevation_imgs.to(device, non_blocking=True)
+        water_occur = water_occur.to(device, non_blocking=True)
+        masks = masks.to(device, non_blocking=True)
+              
+
         with autocast(device_type="cuda", dtype=torch.bfloat16):
-            outputs = model(sar_imgs, optical_imgs, elevation_imgs)   # s1, s2, dem
+            outputs = model(sar_imgs, optical_imgs, elevation_imgs, water_occur)   # s1, s2, dem
             targets = masks.squeeze(1) if len(masks.shape) > 3 else masks
             loss = criterion(outputs, targets.long()) / accumulation_steps
             
@@ -180,13 +159,14 @@ def test(model, loader, criterion, device):
             sar_imgs, optical_imgs, elevation_imgs, masks, water_occur = batch_data
             
             # Send to device
-            sar_imgs = sar_imgs.to(device)
-            optical_imgs = optical_imgs.to(device)
-            elevation_imgs = elevation_imgs.to(device)
-            masks = masks.to(device)
+            sar_imgs = sar_imgs.to(device, non_blocking=True)
+            optical_imgs = optical_imgs.to(device, non_blocking=True)
+            elevation_imgs = elevation_imgs.to(device, non_blocking=True)
+            water_occur = water_occur.to(device, non_blocking=True)
+            masks = masks.to(device, non_blocking=True)
             
             # Pass different modalities to different streams
-            predictions = model(sar_imgs, optical_imgs, elevation_imgs)
+            predictions = model(sar_imgs, optical_imgs, elevation_imgs, water_occur)
 
             targets = masks.squeeze(1).long() if len(masks.shape) > 3 else masks.long()
             loss = criterion(predictions, targets)
@@ -293,9 +273,8 @@ def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_lo
 
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-    # optimizer = Lion(model.parameters(), lr=args.learning_rate)
-    # optimizer = MuonWithAuxAdam(get_muon_target_params(model, model_name))
-
+    # optimizer = Lion(model.parameters(), lr=args.learning_rate, weight_decay=0.01)
+    # optimizer = torch.optim.Muon(model.parameters(), lr=args.learning_rate)
 
 
     if args.loss_func == 'diceloss':
@@ -316,22 +295,23 @@ def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_lo
     attention_based_model = ['DSUNet_Prithvi','DSUNet3P_Prithvi','HydraUNet_Prithvi','HydraUNet3P_Prithvi']
     three_phase_model = ['DSUNet_EarlyFS', 'DSUNet_MiddleFS', 'DSUNet_LateFS']
 
-    if model_name in attention_based_model and args.finetune_ratio is not None:
-        model.change_prithvi_trainability(False)
-        logger.info(f"Prithvi weights frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+    # if model_name in attention_based_model and args.finetune_ratio is not None:
+    #     model.change_prithvi_trainability(False)
+    #     logger.info(f"Prithvi weights frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
 
     # Full Phase 1
-    if model_name in three_phase_model and args.finetune_ratio is not None:
-        model.change_s1_trainability(True) # Freeze S2, update S1
-        model.change_s2_trainability(True) # Freeze S2, update S1
-        # logger.info(f"Module S2 frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
+    # if model_name in three_phase_model and args.finetune_ratio is not None:
+    #     model.change_s1_trainability(True) 
+    #     model.change_s2_trainability(False) # Freeze S1, update S2
+    #     model.change_prithvi_trainability(False) # Freeze prithvi
+    #     logger.info(f"Module S2 frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
 
     num_params_phase_1 = ph_loop(model, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
     torch.cuda.empty_cache()
 
     # # Full Phase 2
     # if model_name in three_phase_model and args.finetune_ratio is not None:
-    #     model.change_s1_trainability(False) # Freeze S1, train S2
+    #     model.change_s1_trainability(False) # Freeze S2, update S1
     #     model.change_s2_trainability(True)
     #     logger.info(f"Module S1 frozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
     # num_params_phase_2 = ph_loop(model, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
@@ -340,6 +320,8 @@ def train(model, model_name, train_loader, valid_loader, test_loader, bolivia_lo
     # # FT Phase 3
     # if model_name in three_phase_model and args.finetune_ratio is not None:
     #     model.change_s1_trainability(True)
+    #     model.change_s2_trainability(True)
+    #     model.change_prithvi_trainability(True) # Unfreeze Prithvi
     #     logger.info(f"All weights unfrozen. Trainable parameters: {get_number_of_trainable_parameters(model):,}")
     #     num_params_phase_ft = ft_loop(model, model_name, train_loader, valid_loader, criterion, device, writer, scheduler, optimizer, args)
 
@@ -388,7 +370,8 @@ def main(args):
     random.seed(args.torch_seed)
     torch.manual_seed(args.torch_seed)
     np.random.seed(args.torch_seed)
-    torch.backends.cudnn.deterministic = True
+    
+    torch.backends.cudnn.deterministic = True # same as torch.use_deterministic_algorithms()
     torch.backends.cudnn.benchmark = False
   
     train_loader = get_loader_MM(args.data_path, DatasetType.TRAIN.value, args)
@@ -403,28 +386,63 @@ def main(args):
         #     unet_encoder_size=768
         # ),
 
-        'DSUNet_EarlyFS': DSUNet(
-            cfg=Config_DSUnet,
-            use_prithvi=False,
-            fusion_scheme="early",
-            bottleneck_dropout_prob=0
-        ),
-        'DSUNet_MiddleFS': DSUNet(
-            cfg=Config_DSUnet,
-            use_prithvi=False,
-            fusion_scheme="middle",
-            bottleneck_dropout_prob=0
-        ),
-        'DSUNet_LateFS': DSUNet(
-            cfg=Config_DSUnet,
-            use_prithvi=False,
-            fusion_scheme="late",
-            bottleneck_dropout_prob=0
-        ),
-        'DSUnet_Base': DSUNet_Base(
+        # 'DSUNet_EarlyFS': DSUNet(
+        #     cfg=Config_DSUnet,
+        #     use_prithvi=False,
+        #     use_cm_attn=True,
+        #     fusion_scheme="early",
+        #     bottleneck_dropout_prob=0
+        # ),
+        # 'DSUNet_MiddleFS': DSUNet(
+        #     cfg=Config_DSUnet,
+        #     use_prithvi=False,
+        #     use_cm_attn=True,
+        #     fusion_scheme="middle",
+        #     bottleneck_dropout_prob=0
+        # ),
+        # 'DSUNet_LateFS': DSUNet(
+        #     cfg=Config_DSUnet,
+        #     use_prithvi=False,
+        #     use_cm_attn=True,
+        #     fusion_scheme="late",
+        #     bottleneck_dropout_prob=None
+        # ),
+        # 'PRC_UNet': DSUNet_PRC(
+        #     cfg=Config_DSUnet
+        # )
+        'DSCNN_UNet': DSGhostUnet(
             cfg=Config_DSUnet,
             use_prithvi=False
         )
+
+        # 'DSUNet3P_EarlyFS': DSUNet3P(
+        #     cfg=Config_DSUnet3P,
+        #     use_prithvi=False,
+        #     use_cm_attn=False,
+        #     fusion_scheme="early",
+        #     bottleneck_dropout_prob=0
+        # ),
+
+        # 'DSUNet3P_MiddleFS': DSUNet3P(
+        #     cfg=Config_DSUnet3P,
+        #     use_prithvi=False,
+        #     use_cm_attn=False,
+        #     fusion_scheme="middle",
+        #     bottleneck_dropout_prob=0
+        # ),
+
+        # 'DSUNet3P_LateFS': DSUNet3P(
+        #     cfg=Config_DSUnet3P,
+        #     use_prithvi=False,
+        #     use_cm_attn=False,
+        #     fusion_scheme="late",
+        #     bottleneck_dropout_prob=0
+        # ),
+
+        # 'DSUnet_Base': DSUNet_Base(
+        #     cfg=Config_DSUnet,
+        #     use_prithvi=False
+        # )
         # 'DSUNet_Prithvi': DSUNet(
         #     cfg=Config_DSUnet,
         #     use_prithvi=True
