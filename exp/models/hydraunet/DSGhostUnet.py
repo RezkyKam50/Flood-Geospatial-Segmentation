@@ -12,7 +12,7 @@ from models.hydraunet.Attention import *
 # Reference from DS_Unet https://github.com/SebastianHafner/DS_UNet/blob/master/utils/networks.py
 class DSGhostUnet(nn.Module):
 
-    def __init__(self, cfg, use_prithvi=None, attn_scheme=None):
+    def __init__(self, cfg, use_prithvi=None, skip_attn_scheme=None, end_attn_scheme=None):
         super(DSGhostUnet, self).__init__()
         assert (cfg.DATASET.MODE == 'fusion')
         self._cfg = cfg
@@ -22,13 +22,13 @@ class DSGhostUnet(nn.Module):
         # sentinel-1 unet stream
         n_s1_bands = len(cfg.DATASET.SENTINEL1_BANDS)
         s1_in = n_s1_bands 
-        self.s1_stream = UNet(cfg, n_channels=s1_in + 2, n_classes=out, topology=topology, enable_outc=False, attn_scheme=attn_scheme)
+        self.s1_stream = UNet(cfg, n_channels=s1_in + 2, n_classes=out, topology=topology, enable_outc=False, attn_scheme=skip_attn_scheme)
         self.n_s1_bands = n_s1_bands
 
         # sentinel-2 unet stream
         n_s2_bands = len(cfg.DATASET.SENTINEL2_BANDS)
         s2_in = n_s2_bands  
-        self.s2_stream = UNet(cfg, n_channels=s2_in, n_classes=out, topology=topology, enable_outc=False, attn_scheme=attn_scheme)
+        self.s2_stream = UNet(cfg, n_channels=s2_in, n_classes=out, topology=topology, enable_outc=False, attn_scheme=skip_attn_scheme)
         self.n_s2_bands = n_s2_bands
  
         self.aux_se = CrossModalSqueezeExcite(
@@ -41,11 +41,20 @@ class DSGhostUnet(nn.Module):
             s_chs=cfg.MODEL.TOPOLOGY[0]
         ) 
 
-        self.feature_attn = SEAttention(
-            channel=cfg.MODEL.TOPOLOGY[0]
-        )
-
-
+        if end_attn_scheme == "SE":
+            self.feature_attn = SEAttention(
+                channel=cfg.MODEL.TOPOLOGY[0]
+            )
+        elif end_attn_scheme == "COORD":
+            self.feature_attn = CoordAtt(
+                inp=cfg.MODEL.TOPOLOGY[0],
+                oup=cfg.MODEL.TOPOLOGY[0]
+            )
+        elif end_attn_scheme == "SHUFFLE":
+            self.feature_attn = ShuffleAttention(
+                channel=cfg.MODEL.TOPOLOGY[0]
+            )
+            
         # out block combining unet outputs
         self.use_prithvi = use_prithvi
             # prithvi
