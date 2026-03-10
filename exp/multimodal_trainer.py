@@ -535,7 +535,7 @@ def main(args):
         results.append(result)
     
 
-    results_file = os.path.join(base_log_dir, f'multimodal_e{args.epochs}_{args.loss_func}.json')
+    results_file = os.path.join(base_log_dir, f'multimodal_e{args.epochs}_{args.loss_func}xElevationLoss.json')
     with open(results_file, 'w') as f:
         json.dump(results, f, indent=4, default=float)
     logger.info(f"\nResults saved to: {results_file}")
