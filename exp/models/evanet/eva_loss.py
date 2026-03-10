@@ -76,7 +76,7 @@ class ElevationLoss(nn.Module):
         loss_elevation = loss.sum() / n_valid
         
         if self.use_tversky:
-            total_loss = loss_tversky + loss_elevation
+            total_loss = loss_tversky * loss_elevation
             return total_loss
         else:
             return loss_elevation
