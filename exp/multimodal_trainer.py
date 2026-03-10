@@ -497,25 +497,25 @@ def main(args):
         #     skip_attn_scheme="COORD",
         #     end_attn_scheme="SE"
         # ),
-        "DSUnetShuffle_SE": DSGhostUnet(
+        "DSUnetShuffleG12_SE": DSGhostUnet(
             cfg=Config_DSUnet, 
             use_prithvi=False,
             skip_attn_scheme="SHUFFLE",
             end_attn_scheme="SE",
         ),
-        "DSUnetShuffle_COORD": DSGhostUnet(
-            cfg=Config_DSUnet, 
-            use_prithvi=False,
-            skip_attn_scheme="SHUFFLE",
-            end_attn_scheme="COORD",
-        ),
-        "DSUnetCoord_COORD": DSGhostUnet(
-            cfg=Config_DSUnet, 
-            use_prithvi=False,
-            skip_attn_scheme="COORD",
-            end_attn_scheme="COORD",
-        ),
-        "DSUnetShuffle_SHUFFLE": DSGhostUnet(
+        # "DSUnetShuffle_COORD": DSGhostUnet(
+        #     cfg=Config_DSUnet, 
+        #     use_prithvi=False,
+        #     skip_attn_scheme="SHUFFLE",
+        #     end_attn_scheme="COORD",
+        # ),
+        # "DSUnetCoord_COORD": DSGhostUnet(
+        #     cfg=Config_DSUnet, 
+        #     use_prithvi=False,
+        #     skip_attn_scheme="COORD",
+        #     end_attn_scheme="COORD",
+        # ),
+        "DSUnetShuffleG12_SHUFFLE": DSGhostUnet(
             cfg=Config_DSUnet, 
             use_prithvi=False,
             skip_attn_scheme="SHUFFLE",
