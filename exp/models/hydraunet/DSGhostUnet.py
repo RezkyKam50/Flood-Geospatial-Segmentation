@@ -205,7 +205,7 @@ class UNet(nn.Module):
 # sub-parts of the U-Net model
 # DoubleConv with GhostNet
 class DoubleConv(nn.Module):
-    def __init__(self, in_ch, out_ch, scheme="prc"):
+    def __init__(self, in_ch, out_ch, scheme="cnn"):
         super(DoubleConv, self).__init__()
         self.scheme = scheme
 
