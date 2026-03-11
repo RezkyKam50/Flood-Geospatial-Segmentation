@@ -510,13 +510,13 @@ def main(args):
             fusion_scheme="late",
             bottleneck_dropout_prob=None
         ),
-        "DSUnet_SE": DSGhostUnet(
+        "DSUnet_NoSkipAttn_SE": DSGhostUnet(
             cfg=Config_DSUnet,
             use_prithvi=False,
-            skip_attn_scheme="SHUFFLE",
+            skip_attn_scheme=None,
             end_attn_scheme="SE"
         ),
-        "DSUnet_Shuffle": DSGhostUnet(
+        "DSUnet_Shuffle_NoFusionAttn": DSGhostUnet(
             cfg=Config_DSUnet, 
             use_prithvi=False,
             skip_attn_scheme="SHUFFLE",
