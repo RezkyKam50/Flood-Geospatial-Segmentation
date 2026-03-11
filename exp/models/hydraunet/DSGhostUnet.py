@@ -41,19 +41,6 @@ class DSGhostUnet(nn.Module):
             s_chs=cfg.MODEL.TOPOLOGY[0]
         ) 
 
-        if end_attn_scheme == "SE":
-            self.feature_attn = SEAttention(
-                channel=cfg.MODEL.TOPOLOGY[0]
-            )
-        elif end_attn_scheme == "COORD":
-            self.feature_attn = CoordAtt(
-                inp=cfg.MODEL.TOPOLOGY[0],
-                oup=cfg.MODEL.TOPOLOGY[0]
-            )
-        elif end_attn_scheme == "SHUFFLE":
-            self.feature_attn = ShuffleAttention(
-                channel=cfg.MODEL.TOPOLOGY[0]
-            )
             
         # out block combining unet outputs
         self.use_prithvi = use_prithvi
@@ -70,6 +57,21 @@ class DSGhostUnet(nn.Module):
             out_dim = 2 * cfg.MODEL.TOPOLOGY[0] # N channels x Topo First idx 
 
         self.out_conv = OutConv(out_dim, out)
+
+        if end_attn_scheme == "SE":
+            self.feature_attn = SEAttention(
+                # channel=cfg.MODEL.TOPOLOGY[0]
+                channel=out_dim
+            )
+        elif end_attn_scheme == "COORD":
+            self.feature_attn = CoordAtt(
+                inp=cfg.MODEL.TOPOLOGY[0],
+                oup=cfg.MODEL.TOPOLOGY[0]
+            )
+        elif end_attn_scheme == "SHUFFLE":
+            self.feature_attn = ShuffleAttention(
+                channel=cfg.MODEL.TOPOLOGY[0]
+            )
 
     def change_prithvi_trainability(self, trainable):
         if self.use_prithvi:
@@ -99,7 +101,9 @@ class DSGhostUnet(nn.Module):
         # print(f"DEM SH: {dem_img.shape}")
         s1_feature = torch.cat([dem_img, water_occur, s1_img], dim=1) # B, 2 + 2, H, W
         s1_feature = self.s1_stream(s1_feature)
+        # s1_feature = self.feature_attn(s1_feature)
         s2_feature = self.s2_stream(s2_img)     
+        # s2_feature = self.feature_attn(s2_feature)
 
         # aux attention on S1 features
         # aux = torch.cat([dem_img, water_occur], dim=1)  # [B, 2, H, W]
@@ -113,7 +117,7 @@ class DSGhostUnet(nn.Module):
             fusion = torch.cat((s1_feature, s2_feature), dim=1)
         
         fusion = self.feature_attn(fusion)
-        
+
         out = self.out_conv(fusion)
         return out
 
