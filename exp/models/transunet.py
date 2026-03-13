@@ -9,7 +9,6 @@ from einops import rearrange, repeat
 from einops.layers.torch import Rearrange
 
 # from utils.checkpoint import load_checkpoint # no need for checkpoint
-from mmseg.utils import get_root_logger
 groups = 32
  
 
