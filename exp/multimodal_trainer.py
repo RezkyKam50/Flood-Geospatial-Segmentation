@@ -1,24 +1,24 @@
 import torch
 import torch.nn as nn
 
+from torchvision.models.segmentation import (
+    deeplabv3_resnet101, 
+    deeplabv3_mobilenet_v3_large
+)
+from models.deeplab import DeepLabWrapper
+
 from models.hydraunet.UNet import UNet
 from models.hydraunet.UNetTP import UNet3Plus
-from models.hydraunet.DSUnet_Base import DSUNet_Base
 from models.hydraunet.DSUnet import DSUNet          # Dual Modality Classical UNet
-from models.hydraunet.DSUnetTP import DSUNet3P      # Dual Modality UNet3+
-
-from models.hydraunet.HydraUnet import HydraUNet       # Triple Modality Classical UNet
-from models.hydraunet.HydraUnetTP import HydraUNet3P  # Triple Modality UNet3+
-
-from models.hydraunet.PRCUNet import DSUNet_PRC
 from models.hydraunet.DSGhostUnet import DSGhostUnet
+from models.transunet import TransUNet, TransUNetWrapper
+
 
 from models.hydraunet.config import (
     Config_DSUnet, # Dual Stream | S1, S2 (Classic UNet),
-    Config_DSUnet3P,    # Dual Stream | S1, S2 (UNet3+ UNet),
-    Config_HydraUNet, # Triple Stream | S1, S2, DEM (Classic UNet)
-    Config_HydraUnet3P # Triple Stream | S1, S2, DEM (UNet3+)
+    Config_DSUnet3P   # Dual Stream | S1, S2 (UNet3+ UNet),
 )
+
 
 from models.evanet.eva_net_model import EvaNet
 from models.evanet.eva_loss import ElevationLossWrapper, ElevationLoss
@@ -503,6 +503,13 @@ def main(args):
             n_classes=2,
             enable_outc=True
         ),
+        # "EvaNet": EvaNet(
+        #     n_channels=6,
+        #     n_classes=2
+        # ),
+        # "DeepLabV3_ResNet101": DeepLabWrapper(deeplabv3_resnet101(num_classes=2)),
+        # "DeepLabV3_MobileNet_V3_Large": DeepLabWrapper(deeplabv3_mobilenet_v3_large(num_classes=2)),
+        # "TransUNet": TransUNetWrapper(TransUNet(dim=128, n_class=2, in_ch=6)),
         "DSUnet": DSUNet(
             cfg=Config_DSUnet,
             use_prithvi=False,
