@@ -19,7 +19,7 @@ from models.evanet.elev_deconv import *
 
 class EvaNet(nn.Module):
     
-    def __init__(self, batch_size, n_channels, n_classes, ultrasmall = False, device=torch.device('cuda')):
+    def __init__(self, n_channels, n_classes, ultrasmall = False, device=torch.device('cuda')):
         
         """
         Instantiate a UNet network.
